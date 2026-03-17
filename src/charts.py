@@ -88,7 +88,12 @@ def render_clickable_chart(fig: go.Figure, key: str, field: str) -> None:
     values: list[str] = []
     if len(fig.data) > 0:
         trace0 = fig.data[0]
-        raw = getattr(trace0, "x", None)
+        orientation = getattr(trace0, "orientation", None)
+        if orientation == "h":
+            # Horizontal bar chart: category dimension is on y-axis.
+            raw = getattr(trace0, "y", None)
+        else:
+            raw = getattr(trace0, "x", None)
         if raw is None or len(raw) == 0:
             raw = getattr(trace0, "labels", None)
         if raw is not None:
