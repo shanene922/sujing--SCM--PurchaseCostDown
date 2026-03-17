@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import pandas as pd
+import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 from .metrics import aggregate_metrics
@@ -20,6 +21,16 @@ DETAIL_COLUMNS = [
 
 MATRIX_METRICS = ["总降本金额（负）", "总入库金额", "降本百分比", "加权平均入库价格"]
 
+
+def _render_csv_download_button(df: pd.DataFrame, key: str, file_name: str) -> None:
+    csv_bytes = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    st.download_button(
+        "下载CSV",
+        data=csv_bytes,
+        file_name=file_name,
+        mime="text/csv",
+        key=f"{key}_csv_download",
+    )
 
 
 def render_detail_table(df: pd.DataFrame, key: str, height: int = 360, max_rows: int = 500) -> None:
@@ -201,6 +212,8 @@ def _build_pinned_total_row(df: pd.DataFrame, label_field: str, label_text: str 
 
 def render_matrix_table(df: pd.DataFrame, key: str, row_fields: list[str], grain: str = "月份", height: int = 480) -> None:
     matrix_df, month_order = build_matrix_dataframe(df, row_fields)
+    export_df = matrix_df.drop(columns=["_path"], errors="ignore")
+    _render_csv_download_button(export_df, key=f"{key}_matrix", file_name=f"{key}.csv")
 
     builder = GridOptionsBuilder.from_dataframe(matrix_df)
     builder.configure_default_column(sortable=True, filter=True, resizable=True)
@@ -330,6 +343,7 @@ def render_sourcing_month_matrix(df: pd.DataFrame, key: str, height: int = 480) 
         "suppressAggFuncInHeader": True,
     }
     grid_options["pinnedBottomRowData"] = [_build_pinned_total_row(result, label_field="月份", label_text="总计")]
+    _render_csv_download_button(result, key=f"{key}_matrix", file_name=f"{key}.csv")
 
     AgGrid(
         result,
