@@ -153,6 +153,8 @@ def _build_column_defs(month_order: list[str]) -> list[dict]:
                     "field": f"总计|{metric}",
                     "type": ["numericColumn"],
                     "pinned": "left",
+                    "lockPosition": "left",
+                    "suppressMovable": True,
                     "enableValue": True,
                     **metric_defs[metric],
                 }
@@ -233,8 +235,24 @@ def render_matrix_table(df: pd.DataFrame, key: str, row_fields: list[str], grain
         "minWidth": 280,
         "cellRendererParams": {"suppressCount": True},
         "pinned": "left",
+        "lockPosition": "left",
+        "suppressMovable": True,
     }
     grid_options["columnDefs"] = _build_column_defs(month_order)
+    grid_options["onFirstDataRendered"] = JsCode(
+        """
+        function(params) {
+            const state = [
+                { colId: "ag-Grid-AutoColumn", pinned: "left" },
+                { colId: "总计|总降本金额（负）", pinned: "left" },
+                { colId: "总计|总入库金额", pinned: "left" },
+                { colId: "总计|降本百分比", pinned: "left" },
+                { colId: "总计|加权平均入库价格", pinned: "left" }
+            ];
+            params.columnApi.applyColumnState({ state: state, applyOrder: true });
+        }
+        """
+    )
     total_row = _build_pinned_total_row(matrix_df, label_field="_path", label_text="总计")
     if row_fields:
         total_row[row_fields[0]] = "总计"
