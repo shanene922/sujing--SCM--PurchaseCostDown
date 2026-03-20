@@ -75,7 +75,7 @@ APP_ID=
 APP_SECRET=
 SPREADSHEET_TOKEN=
 SHEET_ID=
-Purchase_CostDown_URL=https://yxrl60vuj4.feishu.cn/sheets/GRVzsv8MvhUwa3tjX4YcBDsEn5c?sheet=fb7EKN
+Purchase_CostDown_URL=
 ```
 
 说明：
