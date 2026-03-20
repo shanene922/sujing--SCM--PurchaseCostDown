@@ -1,4 +1,4 @@
 @echo off
 setlocal
-python -m streamlit run app.py
+uv run -m streamlit run app.py
 endlocal

@@ -1,0 +1,14 @@
+[project]
+name = "supplychain-purchase-costdown-streamlit"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=1.26.4",
+    "pandas>=2.2.3",
+    "plotly>=5.24.1",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3",
+    "streamlit>=1.50.0",
+    "streamlit-aggrid>=1.1.8.post1",
+    "streamlit-plotly-events>=0.0.6",
+]

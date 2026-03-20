@@ -40,19 +40,24 @@ project_root/
   README.md
 ```
 
-## 安装步骤
+## 安装步骤（uv）
 
-1. 创建并激活虚拟环境
+1. 安装 uv（仅首次）
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+winget install --id=astral-sh.uv -e
 ```
 
-2. 安装依赖
+2. 初始化/迁移并同步依赖（当前项目）
 
 ```powershell
-pip install -r requirements.txt
+.\tools\uv-workflow.ps1 bootstrap -ProjectPath . -Name supplychain-purchase-costdown-streamlit -PythonVersion 3.13
+```
+
+3. 运行应用
+
+```powershell
+uv run -m streamlit run app.py
 ```
 
 ## .env 配置说明
@@ -84,7 +89,7 @@ FEISHU_PROBE_ROWS=15
 ## 运行方式
 
 ```powershell
-streamlit run app.py
+uv run -m streamlit run app.py
 ```
 
 浏览器打开后：
@@ -141,3 +146,45 @@ streamlit run app.py
 3. 为时间轴增加更细的 drill path 面包屑交互
 4. 增加异常数据诊断页，例如缺失供应商编码、缺失采购员、日期异常
 5. 引入 Playwright 或 Streamlit App Testing 做页面级自动化测试
+
+
+
+## 通用 uv 自动工作流（可复用到任意项目）
+
+项目内已提供通用脚本：`tools/uv-workflow.ps1`
+
+常用动作：
+
+```powershell
+# 1) 新项目初始化 + 从 requirements.txt 迁移 + lock + sync
+.\tools\uv-workflow.ps1 bootstrap -ProjectPath <你的项目路径> -Name my-project -PythonVersion 3.11
+
+# 2) 同步环境
+.\tools\uv-workflow.ps1 sync -ProjectPath <你的项目路径>
+
+# 3) 运行模块（默认 streamlit run app.py）
+.\tools\uv-workflow.ps1 run -ProjectPath <你的项目路径>
+
+# 4) 增删依赖
+.\tools\uv-workflow.ps1 add -ProjectPath <你的项目路径> -Packages pandas requests
+.\tools\uv-workflow.ps1 remove -ProjectPath <你的项目路径> -Packages requests
+
+# 5) 更新锁文件 / 导出 requirements
+.\tools\uv-workflow.ps1 lock -ProjectPath <你的项目路径>
+.\tools\uv-workflow.ps1 export -ProjectPath <你的项目路径> -ExportFile requirements.lock.txt
+```
+
+可选：把脚本注册为全局命令（仅需一次）
+
+```powershell
+.\tools\install-uv-workflow.ps1 -AliasName uvwf
+```
+
+重开 PowerShell 后即可在任意目录使用：
+
+```powershell
+uvwf bootstrap -ProjectPath . -Name my-project -PythonVersion 3.11
+uvwf run -ProjectPath .
+```
+
+
