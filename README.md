@@ -15,7 +15,10 @@
 
 ```text
 project_root/
+  .python-version
   app.py
+  pyproject.toml
+  uv.lock
   pages/
     1_采购降本整体情况.py
     2_Sourcing降本情况.py
@@ -35,6 +38,9 @@ project_root/
     charts.py
     tables.py
     utils.py
+  tools/
+    uv-workflow.ps1
+    install-uv-workflow.ps1
   .env.example
   requirements.txt
   README.md
@@ -51,7 +57,7 @@ winget install --id=astral-sh.uv -e
 2. 初始化/迁移并同步依赖（当前项目）
 
 ```powershell
-.\tools\uv-workflow.ps1 bootstrap -ProjectPath . -Name supplychain-purchase-costdown-streamlit -PythonVersion 3.13
+.\tools\uv-workflow.ps1 bootstrap -ProjectPath . -Name supplychain-purchase-costdown-streamlit -PythonVersion 3.12
 ```
 
 3. 运行应用
@@ -77,14 +83,6 @@ Purchase_CostDown_URL=https://yxrl60vuj4.feishu.cn/sheets/GRVzsv8MvhUwa3tjX4YcBD
 - 同时兼容你现有工程里的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`
 - 若未填写 `SPREADSHEET_TOKEN` 和 `SHEET_ID`，程序会自动从 `Purchase_CostDown_URL` 中解析
 
-可选参数：
-
-```env
-FEISHU_TIMEOUT=30
-FEISHU_MAX_ROWS=20000
-FEISHU_CHUNK_SIZE=500
-FEISHU_PROBE_ROWS=15
-```
 
 ## 运行方式
 
@@ -95,6 +93,12 @@ uv run -m streamlit run app.py
 浏览器打开后：
 - 首页为项目说明与预览
 - 详细分析页面请从左侧 Pages 导航进入
+
+## 部署到公司内部云
+
+- 推荐容器化部署（Docker/K8s），并通过环境变量注入密钥（不要提交 `.env`）。
+- 可复用本仓库 `tools/uv-workflow.ps1` 做初始化/同步/运行自动化。
+- 生产环境建议默认 `APP_DEBUG=false`，避免展示调试数据面板。
 
 ## 页面说明
 
@@ -130,61 +134,4 @@ uv run -m streamlit run app.py
 - 全局筛选器使用 `session_state` 保持跨页状态
 - `刷新数据` 按钮清理缓存并重新拉取飞书数据
 - Plotly 点击联动 + AgGrid 明细/矩阵
-
-## Power BI 到 Streamlit 的替代说明
-
-由于 Streamlit 原生对 Power BI 式的多层 drilldown 与视觉交互支持有限，当前版本采用以下合理替代：
-
-- 时间层级 drilldown：用“月份 / 周 / 日期”切换器实现，优先保证稳定与清晰
-- 图表点击联动：使用 `streamlit-plotly-events` 捕获点击，并写入 `session_state`
-- 矩阵：使用 AgGrid 树形模式模拟 Power BI Matrix 的展开 / 折叠体验
-
-## 后续可扩展建议
-
-1. 增加本地落盘缓存，减少频繁调用飞书接口
-2. 为大矩阵增加列冻结、导出 Excel、条件格式高亮
-3. 为时间轴增加更细的 drill path 面包屑交互
-4. 增加异常数据诊断页，例如缺失供应商编码、缺失采购员、日期异常
-5. 引入 Playwright 或 Streamlit App Testing 做页面级自动化测试
-
-
-
-## 通用 uv 自动工作流（可复用到任意项目）
-
-项目内已提供通用脚本：`tools/uv-workflow.ps1`
-
-常用动作：
-
-```powershell
-# 1) 新项目初始化 + 从 requirements.txt 迁移 + lock + sync
-.\tools\uv-workflow.ps1 bootstrap -ProjectPath <你的项目路径> -Name my-project -PythonVersion 3.11
-
-# 2) 同步环境
-.\tools\uv-workflow.ps1 sync -ProjectPath <你的项目路径>
-
-# 3) 运行模块（默认 streamlit run app.py）
-.\tools\uv-workflow.ps1 run -ProjectPath <你的项目路径>
-
-# 4) 增删依赖
-.\tools\uv-workflow.ps1 add -ProjectPath <你的项目路径> -Packages pandas requests
-.\tools\uv-workflow.ps1 remove -ProjectPath <你的项目路径> -Packages requests
-
-# 5) 更新锁文件 / 导出 requirements
-.\tools\uv-workflow.ps1 lock -ProjectPath <你的项目路径>
-.\tools\uv-workflow.ps1 export -ProjectPath <你的项目路径> -ExportFile requirements.lock.txt
-```
-
-可选：把脚本注册为全局命令（仅需一次）
-
-```powershell
-.\tools\install-uv-workflow.ps1 -AliasName uvwf
-```
-
-重开 PowerShell 后即可在任意目录使用：
-
-```powershell
-uvwf bootstrap -ProjectPath . -Name my-project -PythonVersion 3.11
-uvwf run -ProjectPath .
-```
-
 
