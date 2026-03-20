@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import os
 import pandas as pd
 import streamlit as st
 
@@ -21,6 +22,7 @@ from src.utils import format_money, format_percent, safe_divide, setup_page
 
 setup_page("采购降本整体情况")
 apply_global_styles()
+APP_DEBUG = os.getenv("APP_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 st.markdown("<div class='page-title'>采购降本整体情况</div>", unsafe_allow_html=True)
 st.markdown("<div class='page-subtitle'>总览当前筛选上下文下的入库、降本、类别分布和 SOURCING 走势。</div>", unsafe_allow_html=True)
@@ -138,39 +140,41 @@ with row2[1]:
     st.markdown("<div class='card-title'>图表 4：SOURCING 降本百分比走势</div>", unsafe_allow_html=True)
     render_clickable_chart(create_sourcing_ratio_line(filtered_df, chart_grain), "page1_chart_sourcing", "SOURCING")
 
-with st.expander("调试：查看图表聚合源数据（用于核对卡片与图表口径）", expanded=False):
-    debug_df = _debug_overview_source(filtered_df, chart_grain).copy()
-    debug_df["入库金额"] = debug_df["入库金额"].round(2)
-    debug_df["总降本金额（负）"] = debug_df["总降本金额（负）"].round(2)
-    debug_df["降本百分比"] = (debug_df["降本百分比"] * 100).round(4)
-    st.caption("降本百分比列显示为百分数（%），便于人工核对。")
-    st.dataframe(debug_df.rename(columns={"降本百分比": "降本百分比(%)"}), use_container_width=True, hide_index=True)
+if APP_DEBUG:
+    with st.expander("调试：查看图表聚合源数据（用于核对卡片与图表口径）", expanded=False):
+        debug_df = _debug_overview_source(filtered_df, chart_grain).copy()
+        debug_df["入库金额"] = debug_df["入库金额"].round(2)
+        debug_df["总降本金额（负）"] = debug_df["总降本金额（负）"].round(2)
+        debug_df["降本百分比"] = (debug_df["降本百分比"] * 100).round(4)
+        st.caption("降本百分比列显示为百分数（%），便于人工核对。")
+        st.dataframe(debug_df.rename(columns={"降本百分比": "降本百分比(%)"}), use_container_width=True, hide_index=True)
 
-    st.caption("图表1 Trace 样本（前 5 个）")
-    st.write(
-        {
-            "bar_x": list(fig_combo_1.data[0].x[:5]) if len(fig_combo_1.data) > 0 else [],
-            "bar_y": list(fig_combo_1.data[0].y[:5]) if len(fig_combo_1.data) > 0 else [],
-            "line_y": list(fig_combo_1.data[1].y[:5]) if len(fig_combo_1.data) > 1 else [],
-            "bar_orientation": getattr(fig_combo_1.data[0], "orientation", None) if len(fig_combo_1.data) > 0 else None,
-            "bar_y_dtype": str(pd.Series(fig_combo_1.data[0].y).dtype) if len(fig_combo_1.data) > 0 else None,
-            "line_y_dtype": str(pd.Series(fig_combo_1.data[1].y).dtype) if len(fig_combo_1.data) > 1 else None,
-        }
-    )
+        st.caption("图表1 Trace 样本（前 5 个）")
+        st.write(
+            {
+                "bar_x": list(fig_combo_1.data[0].x[:5]) if len(fig_combo_1.data) > 0 else [],
+                "bar_y": list(fig_combo_1.data[0].y[:5]) if len(fig_combo_1.data) > 0 else [],
+                "line_y": list(fig_combo_1.data[1].y[:5]) if len(fig_combo_1.data) > 1 else [],
+                "bar_orientation": getattr(fig_combo_1.data[0], "orientation", None) if len(fig_combo_1.data) > 0 else None,
+                "bar_y_dtype": str(pd.Series(fig_combo_1.data[0].y).dtype) if len(fig_combo_1.data) > 0 else None,
+                "line_y_dtype": str(pd.Series(fig_combo_1.data[1].y).dtype) if len(fig_combo_1.data) > 1 else None,
+            }
+        )
 
-    st.caption("图表2 Trace 样本（前 5 个）")
-    st.write(
-        {
-            "bar_x": list(fig_combo_2.data[0].x[:5]) if len(fig_combo_2.data) > 0 else [],
-            "bar_y": list(fig_combo_2.data[0].y[:5]) if len(fig_combo_2.data) > 0 else [],
-            "line_y": list(fig_combo_2.data[1].y[:5]) if len(fig_combo_2.data) > 1 else [],
-            "bar_orientation": getattr(fig_combo_2.data[0], "orientation", None) if len(fig_combo_2.data) > 0 else None,
-            "bar_y_dtype": str(pd.Series(fig_combo_2.data[0].y).dtype) if len(fig_combo_2.data) > 0 else None,
-            "line_y_dtype": str(pd.Series(fig_combo_2.data[1].y).dtype) if len(fig_combo_2.data) > 1 else None,
-        }
-    )
+        st.caption("图表2 Trace 样本（前 5 个）")
+        st.write(
+            {
+                "bar_x": list(fig_combo_2.data[0].x[:5]) if len(fig_combo_2.data) > 0 else [],
+                "bar_y": list(fig_combo_2.data[0].y[:5]) if len(fig_combo_2.data) > 0 else [],
+                "line_y": list(fig_combo_2.data[1].y[:5]) if len(fig_combo_2.data) > 1 else [],
+                "bar_orientation": getattr(fig_combo_2.data[0], "orientation", None) if len(fig_combo_2.data) > 0 else None,
+                "bar_y_dtype": str(pd.Series(fig_combo_2.data[0].y).dtype) if len(fig_combo_2.data) > 0 else None,
+                "line_y_dtype": str(pd.Series(fig_combo_2.data[1].y).dtype) if len(fig_combo_2.data) > 1 else None,
+            }
+        )
 
 st.markdown("<div class='section-title'>联动明细表</div>", unsafe_allow_html=True)
 page_selection_df = apply_chart_selections(filtered_df, get_page_chart_selections("page1_"))
 render_detail_table(page_selection_df, key="page1_detail_table", height=420)
+
 
