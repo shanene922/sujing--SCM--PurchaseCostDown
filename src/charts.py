@@ -293,6 +293,38 @@ def create_category_donut(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def create_category_status_donut(df: pd.DataFrame, level: str) -> go.Figure:
+    if level not in df.columns or "降本类别" not in df.columns:
+        return _apply_layout(go.Figure(), f"{level}涨价降价数量对比", height=380)
+
+    grouped = (
+        df[df["降本类别"].astype(str).isin(["涨价", "降价"])]
+        .groupby("降本类别", dropna=False)[level]
+        .nunique()
+        .reset_index(name="不重复数量")
+        .sort_values("不重复数量", ascending=False)
+    )
+    if grouped.empty:
+        return _apply_layout(go.Figure(), f"{level}涨价降价数量对比", height=380)
+
+    color_map = {"降价": "#22c55e", "涨价": "#f97316"}
+    fig = go.Figure(
+        go.Pie(
+            labels=grouped["降本类别"].fillna("(空值)"),
+            values=grouped["不重复数量"],
+            hole=0.62,
+            marker=dict(colors=[color_map.get(str(v), "#94a3b8") for v in grouped["降本类别"]]),
+            hovertemplate="%{label}<br>不重复数量=%{value}<br>占比=%{percent}<extra></extra>",
+            textinfo="label+value",
+        )
+    )
+    fig = _apply_layout(fig, f"{level}涨价降价数量对比", height=380)
+    fig.update_layout(
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        margin=dict(l=40, r=40, t=55, b=40),
+    )
+    return fig
+
 
 def create_sourcing_ratio_line(df: pd.DataFrame, grain: str) -> go.Figure:
     scoped = _ensure_metric_numeric(df)

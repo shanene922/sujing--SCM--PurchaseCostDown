@@ -5,6 +5,7 @@ import streamlit as st
 from src.charts import (
     create_category_combo_chart,
     create_category_metric_bar,
+    create_category_status_donut,
     create_subcategory_top_chart,
     render_clickable_chart,
 )
@@ -81,6 +82,16 @@ with row1[1]:
 st.markdown("<div class='card-title'>图表 3：二级品类 Top 降本表现</div>", unsafe_allow_html=True)
 st.caption("横向条形图按总降本金额（负）排序，标签同时给出入库金额和降本百分比，便于挑出高价值二级品类。")
 render_clickable_chart(create_subcategory_top_chart(filtered_df, top_n=int(top_n)), "page4_chart_level2", "二级品类")
+
+row2 = st.columns(2)
+with row2[0]:
+    st.markdown("<div class='card-title'>图表 4：一级品类涨价降价数量对比</div>", unsafe_allow_html=True)
+    st.caption("按不重复一级品类数量统计涨价/降价分布。")
+    st.plotly_chart(create_category_status_donut(filtered_df, "一级品类"), use_container_width=True)
+with row2[1]:
+    st.markdown("<div class='card-title'>图表 5：二级品类涨价降价数量对比</div>", unsafe_allow_html=True)
+    st.caption("按不重复二级品类数量统计涨价/降价分布。")
+    st.plotly_chart(create_category_status_donut(filtered_df, "二级品类"), use_container_width=True)
 
 scoped_df = apply_chart_selections(filtered_df, get_page_chart_selections("page4_"))
 
