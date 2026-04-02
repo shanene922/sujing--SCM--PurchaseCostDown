@@ -7,7 +7,6 @@ import streamlit as st
 from src.charts import (
     create_category_donut,
     create_receipt_vs_reduction_chart,
-    create_reduction_vs_ratio_chart,
     create_sourcing_ratio_line,
     render_clickable_chart,
 )
@@ -16,7 +15,7 @@ from src.filters import apply_chart_selections, apply_global_filters, render_glo
 from src.metrics import aggregate_metrics, compute_mom_delta, total_costdown_amount_negative, total_receipt_amount
 from src.state import get_page_chart_selections
 from src.styles import apply_global_styles
-from src.tables import render_detail_table
+from src.tables import render_detail_table, render_matrix_table, render_supplier_material_matrix
 from src.utils import format_money, format_percent, safe_divide, setup_page
 
 
@@ -108,29 +107,24 @@ with kpi_cols[2]:
     )
 with kpi_cols[3]:
     render_metric_card(
-        "供应商涨价金额",
-        format_money(filtered_df.loc[filtered_df["降本类别"] == "涨价", "总降本"].sum()),
+        "供应商涨价金额（负）",
+        format_money(-filtered_df.loc[filtered_df["降本类别"] == "涨价", "总降本"].sum()),
         compute_mom_delta("供应商涨价金额", filtered_df, comparison_df),
     )
 with kpi_cols[4]:
     render_metric_card(
-        "供应商降价金额",
+        "供应商降价金额（负）",
         format_money(filtered_df.loc[filtered_df["降本类别"] == "降价", "总降本"].sum()),
         compute_mom_delta("供应商降价金额", filtered_df, comparison_df),
     )
 
 chart_grain = st.radio("时间粒度", ["月份", "周", "日期"], horizontal=True, key="page1_grain")
+selection_field = "Month" if chart_grain == "月份" else "WeekKey" if chart_grain == "周" else "Date"
 
 fig_combo_1 = create_receipt_vs_reduction_chart(filtered_df, chart_grain)
-fig_combo_2 = create_reduction_vs_ratio_chart(filtered_df, chart_grain)
 
-row1 = st.columns(2)
-with row1[0]:
-    st.markdown("<div class='card-title'>组合图 1</div>", unsafe_allow_html=True)
-    render_clickable_chart(fig_combo_1, "page1_chart_receipt", "Month")
-with row1[1]:
-    st.markdown("<div class='card-title'>组合图 2</div>", unsafe_allow_html=True)
-    render_clickable_chart(fig_combo_2, "page1_chart_ratio", "Month")
+st.markdown("<div class='card-title'>组合图 1：总入库金额 vs 总降本金额（负）</div>", unsafe_allow_html=True)
+render_clickable_chart(fig_combo_1, "page1_chart_receipt", selection_field)
 
 row2 = st.columns(2)
 with row2[0]:
@@ -161,20 +155,65 @@ if APP_DEBUG:
             }
         )
 
-        st.caption("图表2 Trace 样本（前 5 个）")
-        st.write(
-            {
-                "bar_x": list(fig_combo_2.data[0].x[:5]) if len(fig_combo_2.data) > 0 else [],
-                "bar_y": list(fig_combo_2.data[0].y[:5]) if len(fig_combo_2.data) > 0 else [],
-                "line_y": list(fig_combo_2.data[1].y[:5]) if len(fig_combo_2.data) > 1 else [],
-                "bar_orientation": getattr(fig_combo_2.data[0], "orientation", None) if len(fig_combo_2.data) > 0 else None,
-                "bar_y_dtype": str(pd.Series(fig_combo_2.data[0].y).dtype) if len(fig_combo_2.data) > 0 else None,
-                "line_y_dtype": str(pd.Series(fig_combo_2.data[1].y).dtype) if len(fig_combo_2.data) > 1 else None,
-            }
-        )
+page_selection_df = apply_chart_selections(filtered_df, get_page_chart_selections("page1_"))
+page_selection_df = page_selection_df.copy()
+page_selection_df["物料编码名称"] = (
+    page_selection_df["物料编码"].fillna("").astype(str).str.strip()
+    + " | "
+    + page_selection_df["物料名称"].fillna("").astype(str).str.strip()
+)
+
+st.markdown("<div class='section-title'>品类穿透矩阵</div>", unsafe_allow_html=True)
+st.caption("层级：一级品类 -> 二级品类 -> 供应商名称 -> 物料编码；统计口径与其他矩阵保持一致。")
+render_matrix_table(
+    page_selection_df,
+    key="page1_matrix_category_drilldown",
+    row_fields=["一级品类", "二级品类", "供应商名称", "物料编码名称"],
+    grain="月份",
+    height=500,
+)
+
+discount_df = page_selection_df[page_selection_df["降本类别"].astype(str) == "降价"].copy()
+increase_df = page_selection_df[page_selection_df["降本类别"].astype(str) == "涨价"].copy()
+
+st.markdown("<div class='section-title'>降价物料情况矩阵</div>", unsafe_allow_html=True)
+st.caption("仅统计降价物料；层级：一级品类 -> 二级品类 -> 供应商名称 -> 物料编码 | 物料名称。")
+render_matrix_table(
+    discount_df,
+    key="page1_matrix_discount_drilldown",
+    row_fields=["一级品类", "二级品类", "供应商名称", "物料编码名称"],
+    grain="月份",
+    height=500,
+)
+
+st.markdown("<div class='section-title'>涨价物料情况矩阵</div>", unsafe_allow_html=True)
+st.caption("仅统计涨价物料；层级：一级品类 -> 二级品类 -> 供应商名称 -> 物料编码 | 物料名称。")
+render_matrix_table(
+    increase_df,
+    key="page1_matrix_increase_drilldown",
+    row_fields=["一级品类", "二级品类", "供应商名称", "物料编码名称"],
+    grain="月份",
+    height=500,
+)
+
+st.markdown("<div class='section-title'>物料具体情况矩阵</div>", unsafe_allow_html=True)
+detail_category = st.radio(
+    "具体情况筛选",
+    ["全部", "降价", "涨价"],
+    horizontal=True,
+    key="page1_supplier_material_category",
+)
+detail_matrix_df = page_selection_df.copy()
+if detail_category != "全部":
+    detail_matrix_df = detail_matrix_df[detail_matrix_df["降本类别"].astype(str) == detail_category].copy()
+st.caption("层级：供应商名称 -> 物料编码 | 物料名称，层级右侧展示 SOURCING；可通过上方切换查看涨价或降价。")
+render_supplier_material_matrix(
+    detail_matrix_df,
+    key="page1_matrix_supplier_material_v2",
+    height=460,
+)
 
 st.markdown("<div class='section-title'>联动明细表</div>", unsafe_allow_html=True)
-page_selection_df = apply_chart_selections(filtered_df, get_page_chart_selections("page1_"))
 render_detail_table(page_selection_df, key="page1_detail_table", height=420)
 
 

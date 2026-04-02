@@ -3,7 +3,6 @@
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from streamlit_plotly_events import plotly_events
 import streamlit as st
 
 from .metrics import aggregate_metrics
@@ -56,6 +55,17 @@ def _coerce_plot_series(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
         if col in coerced.columns:
             coerced[col] = pd.to_numeric(coerced[col], errors="coerce").astype("float64")
     return coerced
+
+
+def _format_short_money(value: float) -> str:
+    if pd.isna(value):
+        return "--"
+    abs_value = abs(float(value))
+    if abs_value >= 100000000:
+        return f"{value / 100000000:.2f}亿"
+    if abs_value >= 10000:
+        return f"{value / 10000:.1f}万"
+    return f"{value:,.0f}"
 
 
 
@@ -119,9 +129,21 @@ def create_receipt_vs_reduction_chart(df: pd.DataFrame, grain: str) -> go.Figure
     scoped = _ensure_metric_numeric(df)
     selection_field, sort_fields = _time_bucket(scoped, grain)
     grouped = aggregate_metrics(scoped, sort_fields).sort_values(sort_fields)
-    grouped = _coerce_plot_series(grouped, ["入库金额", "总降本金额（负）"])
+    grouped = _coerce_plot_series(grouped, ["入库金额", "总降本金额（负）", "降本百分比"])
     x_values = grouped["时间标签"].astype(str) if grain != "日期" else grouped["时间标签"]
     customdata = [[selection_field, value] for value in grouped["时间标签"]]
+    label_text = [
+        (
+            f"入库 {_format_short_money(receipt)}<br>降本 {_format_short_money(amount)}<br>{ratio:.2%}"
+            if pd.notna(receipt) and pd.notna(amount) and pd.notna(ratio)
+            else (
+                f"入库 {_format_short_money(receipt)}<br>降本 {_format_short_money(amount)}"
+                if pd.notna(receipt) and pd.notna(amount)
+                else _format_short_money(receipt if pd.notna(receipt) else amount)
+            )
+        )
+        for receipt, amount, ratio in zip(grouped["入库金额"], grouped["总降本金额（负）"], grouped["降本百分比"])
+    ]
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(
@@ -144,9 +166,13 @@ def create_receipt_vs_reduction_chart(df: pd.DataFrame, grain: str) -> go.Figure
             mode="lines+markers",
             line=dict(color="#22c55e", width=3),
             customdata=customdata,
-            hovertemplate="时间=%{x}<br>总降本金额（负）=%{y:,.2f}<extra></extra>",
+            hovertemplate="时间=%{x}<br>总降本金额（负）=%{y:,.2f}<br>降本百分比=%{customdata[2]:.2%}<extra></extra>",
         ),
         secondary_y=True,
+    )
+    fig.update_traces(
+        selector=dict(name="总降本金额（负）"),
+        customdata=[[selection_field, value, ratio] for value, ratio in zip(grouped["时间标签"], grouped["降本百分比"])],
     )
     bar_max = float(grouped["入库金额"].max()) if len(grouped) and pd.notna(grouped["入库金额"].max()) else 0.0
     line_max = float(grouped["总降本金额（负）"].max()) if len(grouped) and pd.notna(grouped["总降本金额（负）"].max()) else 0.0
@@ -164,10 +190,24 @@ def create_receipt_vs_reduction_chart(df: pd.DataFrame, grain: str) -> go.Figure
         tickformat=",.2f",
         separatethousands=True,
         showexponent="none",
-        range=[0, line_max * 1.15 if line_max > 0 else 1],
+        range=[0, line_max * 1.28 if line_max > 0 else 1],
     )
     if grain != "日期":
         fig.update_xaxes(type="category")
+    for x_value, bar_value, text in zip(x_values, grouped["入库金额"], label_text):
+        if pd.isna(bar_value):
+            continue
+        fig.add_annotation(
+            x=x_value,
+            y=bar_value,
+            text=text,
+            showarrow=False,
+            yshift=14,
+            xanchor="center",
+            yanchor="bottom",
+            font=dict(color=FONT_COLOR, size=11),
+            align="center",
+        )
     return _apply_layout(fig, "总入库金额 vs 总降本金额（负）")
 
 
@@ -384,5 +424,114 @@ def create_supplier_cluster_chart(df: pd.DataFrame, top_n: str) -> go.Figure:
     )
     fig.update_layout(barmode="group")
     return _apply_layout(fig, "各供应商降本表现", height=max(420, len(grouped) * 28))
+
+
+def create_category_combo_chart(df: pd.DataFrame, level: str, top_n: int = 12) -> go.Figure:
+    scoped = _ensure_metric_numeric(df)
+    grouped = aggregate_metrics(scoped, [level]).rename(columns={"入库金额": "总入库金额"})
+    grouped[level] = grouped[level].fillna("(空值)").astype(str)
+    grouped = grouped.sort_values("总降本金额（负）", ascending=False).head(top_n).copy()
+    grouped = _coerce_plot_series(grouped, ["总入库金额", "总降本金额（负）", "降本百分比"])
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(
+        go.Bar(
+            x=grouped[level],
+            y=grouped["总入库金额"],
+            name="总入库金额",
+            marker_color="#38bdf8",
+            customdata=grouped[["总降本金额（负）", "降本百分比"]].values,
+            hovertemplate=f"{level}=%{{x}}<br>总入库金额=%{{y:,.2f}}<br>总降本金额（负）=%{{customdata[0]:,.2f}}<br>降本百分比=%{{customdata[1]:.2%}}<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=grouped[level],
+            y=grouped["总降本金额（负）"],
+            name="总降本金额（负）",
+            mode="lines+markers+text",
+            line=dict(color="#22c55e", width=3),
+            text=[f"{_format_short_money(v)}<br>{r:.2%}" if pd.notna(v) and pd.notna(r) else _format_short_money(v) for v, r in zip(grouped["总降本金额（负）"], grouped["降本百分比"])],
+            textposition="top center",
+            customdata=grouped[["总入库金额", "降本百分比"]].values,
+            hovertemplate=f"{level}=%{{x}}<br>总降本金额（负）=%{{y:,.2f}}<br>总入库金额=%{{customdata[0]:,.2f}}<br>降本百分比=%{{customdata[1]:.2%}}<extra></extra>",
+        ),
+        secondary_y=True,
+    )
+    if len(grouped):
+        receipt_max = float(grouped["总入库金额"].max()) if pd.notna(grouped["总入库金额"].max()) else 0.0
+        reduction_max = float(grouped["总降本金额（负）"].max()) if pd.notna(grouped["总降本金额（负）"].max()) else 0.0
+    else:
+        receipt_max = 0.0
+        reduction_max = 0.0
+    fig.update_yaxes(title_text="总入库金额", secondary_y=False, tickformat=",.2f", range=[0, receipt_max * 1.18 if receipt_max > 0 else 1])
+    fig.update_yaxes(title_text="总降本金额（负）", secondary_y=True, tickformat=",.2f", range=[0, reduction_max * 1.30 if reduction_max > 0 else 1])
+    fig.update_xaxes(type="category")
+    return _apply_layout(fig, f"{level}降本与入库概览", height=430)
+
+
+def create_subcategory_top_chart(df: pd.DataFrame, top_n: int = 15) -> go.Figure:
+    scoped = _ensure_metric_numeric(df)
+    level_fields = [field for field in ["一级品类", "二级品类"] if field in scoped.columns]
+    if len(level_fields) < 2:
+        return _apply_layout(go.Figure(), "二级品类 Top 表现", height=430)
+
+    grouped = aggregate_metrics(scoped, ["一级品类", "二级品类"]).rename(columns={"入库金额": "总入库金额"})
+    grouped["一级品类"] = grouped["一级品类"].fillna("(空值)").astype(str)
+    grouped["二级品类"] = grouped["二级品类"].fillna("(空值)").astype(str)
+    grouped = grouped.sort_values(["总降本金额（负）", "总入库金额"], ascending=[False, False]).head(top_n).copy()
+    grouped = _coerce_plot_series(grouped, ["总降本金额（负）", "总入库金额", "降本百分比"])
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            y=grouped["二级品类"],
+            x=grouped["总降本金额（负）"],
+            orientation="h",
+            name="总降本金额（负）",
+            marker=dict(
+                color=grouped["降本百分比"],
+                colorscale=[[0, "#38bdf8"], [0.5, "#22c55e"], [1, "#f59e0b"]],
+                colorbar=dict(title="降本百分比", tickformat=".1%"),
+            ),
+            text=[f"入库 {_format_short_money(v)} | {r:.2%}" if pd.notna(v) and pd.notna(r) else f"入库 {_format_short_money(v)}" for v, r in zip(grouped["总入库金额"], grouped["降本百分比"])],
+            textposition="outside",
+            customdata=grouped[["二级品类", "一级品类", "总入库金额", "降本百分比"]].values,
+            hovertemplate="二级品类=%{customdata[0]}<br>一级品类=%{customdata[1]}<br>总降本金额（负）=%{x:,.2f}<br>总入库金额=%{customdata[2]:,.2f}<br>降本百分比=%{customdata[3]:.2%}<extra></extra>",
+        )
+    )
+    fig.update_yaxes(autorange="reversed")
+    fig.update_xaxes(tickformat=",.2f")
+    return _apply_layout(fig, "二级品类 Top 降本表现", height=max(430, len(grouped) * 30))
+
+
+def create_category_metric_bar(df: pd.DataFrame, level: str, metric_name: str = "总降本金额（负）", top_n: int = 12) -> go.Figure:
+    scoped = _ensure_metric_numeric(df)
+    grouped = aggregate_metrics(scoped, [level]).rename(columns={"入库金额": "总入库金额"})
+    grouped[level] = grouped[level].fillna("(空值)").astype(str)
+    grouped = grouped.sort_values(metric_name, ascending=False).head(top_n).copy()
+    grouped = _coerce_plot_series(grouped, [metric_name, "总入库金额", "降本百分比"])
+    fig = go.Figure(
+        go.Bar(
+            x=grouped[level],
+            y=grouped[metric_name],
+            marker=dict(
+                color=grouped["降本百分比"],
+                colorscale=[[0, "#38bdf8"], [0.5, "#22c55e"], [1, "#f59e0b"]],
+                colorbar=dict(title="降本百分比", tickformat=".1%"),
+            ),
+            text=[
+                f"{_format_short_money(v)}<br>{r:.2%}" if pd.notna(v) and pd.notna(r) else _format_short_money(v)
+                for v, r in zip(grouped[metric_name], grouped["降本百分比"])
+            ],
+            textposition="outside",
+            customdata=grouped[["总入库金额", "降本百分比"]].values,
+            hovertemplate=f"{level}=%{{x}}<br>{metric_name}=%{{y:,.2f}}<br>总入库金额=%{{customdata[0]:,.2f}}<br>降本百分比=%{{customdata[1]:.2%}}<extra></extra>",
+        )
+    )
+    fig = _apply_layout(fig, f"{level}{metric_name}对比", height=430)
+    fig.update_xaxes(type="category")
+    fig.update_yaxes(tickformat=",.2f")
+    return fig
 
 

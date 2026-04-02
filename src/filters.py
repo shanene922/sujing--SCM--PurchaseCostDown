@@ -9,9 +9,9 @@ from .state import clear_chart_selections, ensure_session_state
 from .utils import option_label
 
 
-FILTER_FIELDS = ["SOURCING", "供应商名称", "Year", "Quarter", "Month", "物料名称", "降本类别"]
+FILTER_FIELDS = ["SOURCING", "供应商名称", "一级品类", "二级品类", "三级品类", "Year", "Quarter", "Month", "物料名称", "降本类别"]
 TIME_FIELDS = {"Year", "Quarter", "Month"}
-NON_TIME_FIELDS = ["SOURCING", "供应商名称", "物料名称", "降本类别"]
+NON_TIME_FIELDS = ["SOURCING", "供应商名称", "一级品类", "二级品类", "三级品类", "物料名称", "降本类别"]
 
 
 
@@ -139,6 +139,9 @@ def render_global_sidebar(bundle: Any) -> None:
         filter_labels = {
             "SOURCING": "SOURCING",
             "供应商名称": "供应商名称",
+            "一级品类": "一级品类",
+            "二级品类": "二级品类",
+            "三级品类": "三级品类",
             "Year": "Year",
             "Quarter": "Quarter",
             "Month": "Month",

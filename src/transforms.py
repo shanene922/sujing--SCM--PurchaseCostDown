@@ -26,6 +26,9 @@ STRING_COLUMNS = [
     "采购组织",
     "采购员",
     "SOURCING",
+    "一级品类",
+    "二级品类",
+    "三级品类",
     "订单编号",
     "供应商编码",
     "供应商名称",
@@ -72,6 +75,8 @@ def clean_costdown_dataframe(raw_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Dat
 
     df = raw_df.copy()
     df.columns = [str(col).strip().replace("\n", "") for col in df.columns]
+    if "日期" not in df.columns and "入库日期" in df.columns:
+        df = df.rename(columns={"入库日期": "日期"})
     df = df.replace(r"^\s*$", np.nan, regex=True)
     df = df.dropna(how="all").reset_index(drop=True)
 

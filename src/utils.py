@@ -79,8 +79,31 @@ def parse_mixed_datetime(value: Any) -> pd.Timestamp:
         return pd.NaT
     if re.fullmatch(r"\d+(\.\d+)?", text):
         serial = float(text)
+        if serial >= 1_000_000_000_000:
+            return pd.to_datetime(int(serial), unit="ms", errors="coerce")
+        if serial >= 1_000_000_000:
+            return pd.to_datetime(int(serial), unit="s", errors="coerce")
         if 1 <= serial <= 60000:
             return pd.Timestamp(EXCEL_EPOCH + timedelta(days=serial))
+        if re.fullmatch(r"\d{8}", text):
+            parsed_compact = pd.to_datetime(text, format="%Y%m%d", errors="coerce")
+            if not pd.isna(parsed_compact):
+                return parsed_compact
+    normalized = (
+        text.replace("年", "-")
+        .replace("月", "-")
+        .replace("日", "")
+        .replace(".", "-")
+        .replace("/", "-")
+    )
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    normalized = re.sub(r"-+", "-", normalized)
+    normalized = normalized.rstrip("-")
+    if re.fullmatch(r"\d{4}-\d{1,2}", normalized):
+        normalized = f"{normalized}-01"
+    parsed = pd.to_datetime(normalized, errors="coerce")
+    if not pd.isna(parsed):
+        return parsed
     parsed = pd.to_datetime(text, errors="coerce")
     return parsed if not pd.isna(parsed) else pd.NaT
 

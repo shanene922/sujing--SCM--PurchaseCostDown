@@ -10,6 +10,8 @@ from .metrics import aggregate_metrics
 DETAIL_COLUMNS = [
     "日期",
     "SOURCING",
+    "一级品类",
+    "二级品类",
     "供应商名称",
     "物料编码",
     "物料名称",
@@ -74,14 +76,22 @@ def _ensure_metric_numeric(df: pd.DataFrame) -> pd.DataFrame:
     return scoped
 
 
+def _collapse_dimension_values(series: pd.Series) -> str:
+    values = [str(v).strip() for v in series if pd.notna(v) and str(v).strip()]
+    if not values:
+        return ""
+    unique_values = list(dict.fromkeys(values))
+    return " / ".join(unique_values)
 
-def build_matrix_dataframe(df: pd.DataFrame, row_fields: list[str]) -> tuple[pd.DataFrame, list[str]]:
+
+def build_matrix_dataframe(df: pd.DataFrame, row_fields: list[str], extra_columns: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
     if df.empty:
         return pd.DataFrame(columns=row_fields + ["_path"]), []
 
     scoped = _ensure_metric_numeric(df)
     scoped = scoped[scoped["Month"].notna()].copy()
     scoped["时间列"] = scoped["Month"].astype(str)
+    extra_columns = [col for col in (extra_columns or []) if col in scoped.columns and col not in row_fields]
 
     month_order = (
         scoped[["时间列", "Year", "MonthNo"]]
@@ -99,6 +109,11 @@ def build_matrix_dataframe(df: pd.DataFrame, row_fields: list[str]) -> tuple[pd.
     total_metrics = total_metrics.rename(columns={metric: f"总计|{metric}" for metric in MATRIX_METRICS})
 
     result = month_metrics[row_fields].drop_duplicates().reset_index(drop=True)
+    if extra_columns:
+        extra_df = scoped[row_fields + extra_columns].drop_duplicates().reset_index(drop=True)
+        if extra_df.duplicated(subset=row_fields).any():
+            extra_df = extra_df.groupby(row_fields, dropna=False, as_index=False).agg({col: _collapse_dimension_values for col in extra_columns})
+        result = result.merge(extra_df, on=row_fields, how="left")
     result = result.merge(total_metrics, on=row_fields, how="left")
 
     for month_label in month_order:
@@ -115,7 +130,7 @@ def build_matrix_dataframe(df: pd.DataFrame, row_fields: list[str]) -> tuple[pd.
 
 
 
-def _build_column_defs(month_order: list[str]) -> list[dict]:
+def _build_column_defs(month_order: list[str], extra_columns: list[str] | None = None) -> list[dict]:
     money_formatter = JsCode(
         """
         function(params) {
@@ -144,6 +159,20 @@ def _build_column_defs(month_order: list[str]) -> list[dict]:
     }
 
     column_defs: list[dict] = []
+
+    extra_columns = extra_columns or []
+
+    for col in extra_columns:
+        column_defs.append(
+            {
+                "headerName": col,
+                "field": col,
+                "minWidth": 130,
+                "pinned": "left",
+                "lockPosition": "left",
+                "suppressMovable": True,
+            }
+        )
 
     total_children = []
     for metric in MATRIX_METRICS:
@@ -212,14 +241,22 @@ def _build_pinned_total_row(df: pd.DataFrame, label_field: str, label_text: str 
 
 
 
-def render_matrix_table(df: pd.DataFrame, key: str, row_fields: list[str], grain: str = "月份", height: int = 480) -> None:
-    matrix_df, month_order = build_matrix_dataframe(df, row_fields)
+def render_matrix_table(
+    df: pd.DataFrame,
+    key: str,
+    row_fields: list[str],
+    grain: str = "月份",
+    height: int = 480,
+    extra_columns: list[str] | None = None,
+) -> None:
+    matrix_df, month_order = build_matrix_dataframe(df, row_fields, extra_columns=extra_columns)
     export_df = matrix_df.drop(columns=["_path"], errors="ignore")
     _render_csv_download_button(export_df, key=f"{key}_matrix", file_name=f"{key}.csv")
 
     builder = GridOptionsBuilder.from_dataframe(matrix_df)
     builder.configure_default_column(sortable=True, filter=True, resizable=True)
 
+    extra_columns = [col for col in (extra_columns or []) if col in matrix_df.columns and col not in row_fields]
     for col in row_fields:
         builder.configure_column(col, hide=True)
     builder.configure_column("_path", hide=True)
@@ -238,17 +275,26 @@ def render_matrix_table(df: pd.DataFrame, key: str, row_fields: list[str], grain
         "lockPosition": "left",
         "suppressMovable": True,
     }
-    grid_options["columnDefs"] = _build_column_defs(month_order)
+    grid_options["columnDefs"] = _build_column_defs(month_order, extra_columns=extra_columns)
     grid_options["onFirstDataRendered"] = JsCode(
         """
         function(params) {
-            const state = [
-                { colId: "ag-Grid-AutoColumn", pinned: "left" },
-                { colId: "总计|总降本金额（负）", pinned: "left" },
-                { colId: "总计|总入库金额", pinned: "left" },
-                { colId: "总计|降本百分比", pinned: "left" },
-                { colId: "总计|加权平均入库价格", pinned: "left" }
-            ];
+            const state = [{ colId: "ag-Grid-AutoColumn", pinned: "left" }];
+            ["SOURCING"].forEach(function(colId) {
+                if (params.columnApi.getColumn(colId)) {
+                    state.push({ colId: colId, pinned: "left" });
+                }
+            });
+            [
+                "总计|总降本金额（负）",
+                "总计|总入库金额",
+                "总计|降本百分比",
+                "总计|加权平均入库价格"
+            ].forEach(function(colId) {
+                if (params.columnApi.getColumn(colId)) {
+                    state.push({ colId: colId, pinned: "left" });
+                }
+            });
             params.columnApi.applyColumnState({ state: state, applyOrder: true });
         }
         """
@@ -256,6 +302,149 @@ def render_matrix_table(df: pd.DataFrame, key: str, row_fields: list[str], grain
     total_row = _build_pinned_total_row(matrix_df, label_field="_path", label_text="总计")
     if row_fields:
         total_row[row_fields[0]] = "总计"
+    grid_options["pinnedBottomRowData"] = [total_row]
+
+    AgGrid(
+        matrix_df,
+        gridOptions=grid_options,
+        height=height,
+        theme="streamlit",
+        fit_columns_on_grid_load=False,
+        allow_unsafe_jscode=True,
+        key=key,
+        enable_enterprise_modules=True,
+    )
+
+
+def render_supplier_material_matrix(
+    df: pd.DataFrame,
+    key: str,
+    height: int = 480,
+    sourcing_column: str = "SOURCING",
+) -> None:
+    row_fields = ["供应商名称", "物料编码名称"]
+    matrix_df, month_order = build_matrix_dataframe(df, row_fields, extra_columns=[sourcing_column])
+    export_df = matrix_df.drop(columns=["_path"], errors="ignore")
+    _render_csv_download_button(export_df, key=f"{key}_matrix", file_name=f"{key}.csv")
+    money_formatter = JsCode(
+        """
+        function(params) {
+            if (params.value === null || params.value === undefined || params.value === '') return '--';
+            if (params.node && params.node.rowPinned === 'bottom') {
+                return Number(params.value).toLocaleString('zh-CN', {maximumFractionDigits: 0});
+            }
+            return Number(params.value).toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        """
+    )
+    percent_formatter = JsCode(
+        """
+        function(params) {
+            if (params.value === null || params.value === undefined || params.value === '') return '--';
+            return (Number(params.value) * 100).toFixed(2) + '%';
+        }
+        """
+    )
+    metric_defs = {
+        "总降本金额（负）": {"minWidth": 145, "valueFormatter": money_formatter, "aggFunc": "sum"},
+        "总入库金额": {"minWidth": 145, "valueFormatter": money_formatter, "aggFunc": "sum"},
+        "降本百分比": {"minWidth": 135, "valueFormatter": percent_formatter, "aggFunc": "avg"},
+        "加权平均入库价格": {"minWidth": 155, "valueFormatter": money_formatter, "aggFunc": "avg"},
+    }
+
+    column_defs: list[dict] = []
+    if sourcing_column in matrix_df.columns:
+        column_defs.append(
+            {
+                "headerName": sourcing_column,
+                "field": sourcing_column,
+                "minWidth": 140,
+                "pinned": "left",
+                "lockPosition": "left",
+                "suppressMovable": True,
+            }
+        )
+    column_defs.append(
+        {
+            "headerName": "总计",
+            "children": [
+                {
+                    "headerName": metric,
+                    "field": f"总计|{metric}",
+                    "type": ["numericColumn"],
+                    "enableValue": True,
+                    **metric_defs[metric],
+                }
+                for metric in MATRIX_METRICS
+            ],
+            "marryChildren": True,
+            "headerClass": "ag-center-header",
+        }
+    )
+    for month in month_order:
+        column_defs.append(
+            {
+                "headerName": month,
+                "children": [
+                    {
+                        "headerName": metric,
+                        "field": f"{month}|{metric}",
+                        "type": ["numericColumn"],
+                        "enableValue": True,
+                        **metric_defs[metric],
+                    }
+                    for metric in MATRIX_METRICS
+                ],
+                "marryChildren": True,
+                "headerClass": "ag-center-header",
+            }
+        )
+
+    grid_options = {
+        "columnDefs": column_defs,
+        "defaultColDef": {"sortable": True, "filter": True, "resizable": True},
+        "treeData": True,
+        "animateRows": True,
+        "groupDefaultExpanded": 0,
+        "suppressAggFuncInHeader": True,
+        "maintainColumnOrder": True,
+        "ensureDomOrder": True,
+        "suppressMovableColumns": True,
+        "getDataPath": JsCode("function(data) { return data._path.split(' > '); }"),
+    }
+    grid_options["treeData"] = True
+    grid_options["autoGroupColumnDef"] = {
+        "headerName": "层级",
+        "minWidth": 320,
+        "cellRendererParams": {"suppressCount": True},
+        "pinned": "left",
+        "lockPosition": "left",
+        "suppressMovable": True,
+    }
+    grid_options["onFirstDataRendered"] = JsCode(
+        f"""
+        function(params) {{
+            const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left" }}];
+            if (params.columnApi.getColumn("{sourcing_column}")) {{
+                state.push({{ colId: "{sourcing_column}", pinned: "left" }});
+            }}
+            [
+                "总计|总降本金额（负）",
+                "总计|总入库金额",
+                "总计|降本百分比",
+                "总计|加权平均入库价格"
+            ].forEach(function(colId) {{
+                if (params.columnApi.getColumn(colId)) {{
+                    state.push({{ colId: colId, pinned: "left" }});
+                }}
+            }});
+            params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
+            params.api.refreshHeader();
+        }}
+        """
+    )
+    total_row = _build_pinned_total_row(matrix_df, label_field="_path", label_text="总计")
+    total_row["供应商名称"] = "总计"
     grid_options["pinnedBottomRowData"] = [total_row]
 
     AgGrid(
@@ -365,6 +554,219 @@ def render_sourcing_month_matrix(df: pd.DataFrame, key: str, height: int = 480) 
 
     AgGrid(
         result,
+        gridOptions=grid_options,
+        height=height,
+        theme="streamlit",
+        fit_columns_on_grid_load=False,
+        allow_unsafe_jscode=True,
+        key=key,
+        enable_enterprise_modules=True,
+    )
+
+
+def render_category_overview_table(df: pd.DataFrame, key: str, height: int = 460) -> None:
+    scoped = _ensure_metric_numeric(df)
+    category_fields = [field for field in ["一级品类", "二级品类"] if field in scoped.columns]
+    if len(category_fields) < 2:
+        st.info("当前数据缺少 `一级品类` 或 `二级品类` 字段，暂时无法展示品类降本情况。")
+        return
+
+    scoped["一级品类"] = scoped["一级品类"].fillna("(空值)").astype(str)
+    scoped["二级品类"] = scoped["二级品类"].fillna("(空值)").astype(str)
+
+    result = aggregate_metrics(scoped, ["一级品类", "二级品类"]).rename(columns={"入库金额": "总入库金额"})
+    result = result[["一级品类", "二级品类", "总降本金额（负）", "总入库金额", "降本百分比"]].copy()
+    for col in ["总降本金额（负）", "总入库金额", "降本百分比"]:
+        result[col] = pd.to_numeric(result[col], errors="coerce").round(4 if col == "降本百分比" else 2)
+    result = result.sort_values(["总降本金额（负）", "总入库金额"], ascending=[False, False]).reset_index(drop=True)
+    result["_path"] = result[["一级品类", "二级品类"]].agg(" > ".join, axis=1)
+
+    export_df = result.drop(columns=["_path"], errors="ignore")
+    _render_csv_download_button(export_df, key=f"{key}_csv", file_name=f"{key}.csv")
+
+    money_formatter = JsCode(
+        """
+        function(params) {
+            if (params.value === null || params.value === undefined || params.value === '') return '--';
+            if (params.node && params.node.rowPinned === 'bottom') {
+                return Number(params.value).toLocaleString('zh-CN', {maximumFractionDigits: 0});
+            }
+            return Number(params.value).toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        """
+    )
+    percent_formatter = JsCode(
+        """
+        function(params) {
+            if (params.value === null || params.value === undefined || params.value === '') return '--';
+            return (Number(params.value) * 100).toFixed(2) + '%';
+        }
+        """
+    )
+
+    builder = GridOptionsBuilder.from_dataframe(result)
+    builder.configure_default_column(sortable=True, filter=True, resizable=True)
+    builder.configure_column("一级品类", hide=True)
+    builder.configure_column("二级品类", hide=True)
+    builder.configure_column("_path", hide=True)
+
+    grid_options = builder.build()
+    grid_options["treeData"] = True
+    grid_options["animateRows"] = True
+    grid_options["groupDefaultExpanded"] = 0
+    grid_options["suppressAggFuncInHeader"] = True
+    grid_options["getDataPath"] = JsCode("function(data) { return data._path.split(' > '); }")
+    grid_options["autoGroupColumnDef"] = {
+        "headerName": "品类层级",
+        "minWidth": 320,
+        "cellRendererParams": {"suppressCount": True},
+        "pinned": "left",
+        "lockPosition": "left",
+        "suppressMovable": True,
+    }
+    grid_options["columnDefs"] = [
+        {
+            "headerName": "品类层级",
+            "field": "一级品类",
+            "hide": True,
+        },
+        {
+            "headerName": "总降本金额（负）",
+            "field": "总降本金额（负）",
+            "type": ["numericColumn"],
+            "valueFormatter": money_formatter,
+            "minWidth": 180,
+        },
+        {
+            "headerName": "总入库金额",
+            "field": "总入库金额",
+            "type": ["numericColumn"],
+            "valueFormatter": money_formatter,
+            "minWidth": 170,
+        },
+        {
+            "headerName": "降本百分比",
+            "field": "降本百分比",
+            "type": ["numericColumn"],
+            "valueFormatter": percent_formatter,
+            "minWidth": 140,
+        },
+    ]
+    total_row = {
+        "_path": "总计",
+        "一级品类": "总计",
+        "总降本金额（负）": pd.to_numeric(result["总降本金额（负）"], errors="coerce").sum(),
+        "总入库金额": pd.to_numeric(result["总入库金额"], errors="coerce").sum(),
+    }
+    total_row["降本百分比"] = (
+        total_row["总降本金额（负）"] / total_row["总入库金额"]
+        if total_row["总入库金额"] not in (0, 0.0)
+        else None
+    )
+    grid_options["pinnedBottomRowData"] = [total_row]
+
+    AgGrid(
+        result,
+        gridOptions=grid_options,
+        height=height,
+        theme="streamlit",
+        fit_columns_on_grid_load=False,
+        allow_unsafe_jscode=True,
+        key=key,
+        enable_enterprise_modules=True,
+    )
+
+
+def render_machine_cost_matrix(df: pd.DataFrame, key: str, height: int = 520) -> None:
+    if df.empty:
+        AgGrid(pd.DataFrame(), gridOptions={}, height=height, theme="streamlit", key=key)
+        return
+
+    scoped = df.copy()
+    if "产品" not in scoped.columns:
+        scoped["产品"] = scoped["整机物料名称"].fillna("").astype(str)
+    if "采购停点物料" not in scoped.columns:
+        scoped["采购停点物料"] = scoped["采购层级物料编码"].fillna("").astype(str) + " | " + scoped["采购层级物料名称"].fillna("").astype(str)
+    scoped["_path"] = scoped[["产品线", "产品", "采购停点物料"]].fillna("(空值)").astype(str).agg(" > ".join, axis=1)
+
+    export_df = scoped[
+        [
+            "产品线",
+            "产品",
+            "采购停点物料",
+            "主供应商",
+            "主SOURCING",
+            "累计用量",
+            "2026加权采购单价",
+            "单机总入库成本",
+            "单机总降本金额（负）",
+            "单机降本百分比",
+            "单机涨价金额",
+            "单机降价金额（负）",
+            "最近入库日期",
+        ]
+    ].copy()
+    _render_csv_download_button(export_df, key=f"{key}_csv", file_name=f"{key}.csv")
+
+    money_formatter = JsCode(
+        """
+        function(params) {
+            if (params.value === null || params.value === undefined || params.value === '') return '--';
+            return Number(params.value).toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        """
+    )
+    percent_formatter = JsCode(
+        """
+        function(params) {
+            if (params.value === null || params.value === undefined || params.value === '') return '--';
+            return (Number(params.value) * 100).toFixed(2) + '%';
+        }
+        """
+    )
+    qty_formatter = JsCode(
+        """
+        function(params) {
+            if (params.value === null || params.value === undefined || params.value === '') return '--';
+            return Number(params.value).toLocaleString('zh-CN', {minimumFractionDigits: 0, maximumFractionDigits: 5});
+        }
+        """
+    )
+
+    builder = GridOptionsBuilder.from_dataframe(scoped)
+    builder.configure_default_column(sortable=True, filter=True, resizable=True)
+    for col in ["产品线", "产品", "采购停点物料", "_path", "整机物料编码", "整机物料名称", "采购层级物料编码", "采购层级物料名称", "路径"]:
+        if col in scoped.columns:
+            builder.configure_column(col, hide=True)
+
+    grid_options = builder.build()
+    grid_options["treeData"] = True
+    grid_options["animateRows"] = True
+    grid_options["groupDefaultExpanded"] = 0
+    grid_options["getDataPath"] = JsCode("function(data) { return data._path.split(' > '); }")
+    grid_options["autoGroupColumnDef"] = {
+        "headerName": "层级",
+        "minWidth": 320,
+        "cellRendererParams": {"suppressCount": True},
+        "pinned": "left",
+        "lockPosition": "left",
+        "suppressMovable": True,
+    }
+    grid_options["columnDefs"] = [
+        {"headerName": "主供应商", "field": "主供应商", "minWidth": 180},
+        {"headerName": "主SOURCING", "field": "主SOURCING", "minWidth": 140},
+        {"headerName": "累计用量", "field": "累计用量", "type": ["numericColumn"], "valueFormatter": qty_formatter, "minWidth": 110},
+        {"headerName": "2026加权采购单价", "field": "2026加权采购单价", "type": ["numericColumn"], "valueFormatter": money_formatter, "minWidth": 160},
+        {"headerName": "单机总入库成本", "field": "单机总入库成本", "type": ["numericColumn"], "valueFormatter": money_formatter, "minWidth": 150},
+        {"headerName": "单机总降本金额（负）", "field": "单机总降本金额（负）", "type": ["numericColumn"], "valueFormatter": money_formatter, "minWidth": 170},
+        {"headerName": "单机降本百分比", "field": "单机降本百分比", "type": ["numericColumn"], "valueFormatter": percent_formatter, "minWidth": 140},
+        {"headerName": "单机涨价金额", "field": "单机涨价金额", "type": ["numericColumn"], "valueFormatter": money_formatter, "minWidth": 140},
+        {"headerName": "单机降价金额（负）", "field": "单机降价金额（负）", "type": ["numericColumn"], "valueFormatter": money_formatter, "minWidth": 160},
+        {"headerName": "最近入库日期", "field": "最近入库日期", "minWidth": 120},
+    ]
+
+    AgGrid(
+        scoped,
         gridOptions=grid_options,
         height=height,
         theme="streamlit",
