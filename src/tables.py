@@ -154,7 +154,7 @@ def _build_column_defs(month_order: list[str], extra_columns: list[str] | None =
     metric_defs = {
         "总降本金额（负）": {"minWidth": 145, "aggFunc": "sum", "valueFormatter": money_formatter},
         "总入库金额": {"minWidth": 145, "aggFunc": "sum", "valueFormatter": money_formatter},
-        "降本百分比": {"minWidth": 135, "aggFunc": "avg", "valueFormatter": percent_formatter},
+        "降本百分比": {"minWidth": 135, "valueFormatter": percent_formatter},
         "加权平均入库价格": {"minWidth": 155, "aggFunc": "avg", "valueFormatter": money_formatter},
     }
 
@@ -185,6 +185,24 @@ def _build_column_defs(month_order: list[str], extra_columns: list[str] | None =
                     "lockPosition": "left",
                     "suppressMovable": True,
                     "enableValue": True,
+                    **(
+                        {
+                            "valueGetter": JsCode(
+                                """
+                                function(params) {
+                                    if (params.node && params.node.group) {
+                                        const num = params.node.aggData ? params.node.aggData["总计|总降本金额（负）"] : null;
+                                        const den = params.node.aggData ? params.node.aggData["总计|总入库金额"] : null;
+                                        return den ? num / den : null;
+                                    }
+                                    return params.data ? params.data["总计|降本百分比"] : null;
+                                }
+                                """
+                            )
+                        }
+                        if metric == "降本百分比"
+                        else {}
+                    ),
                     **metric_defs[metric],
                 }
             )
@@ -206,6 +224,24 @@ def _build_column_defs(month_order: list[str], extra_columns: list[str] | None =
                     "field": f"{month}|{metric}",
                     "type": ["numericColumn"],
                     "enableValue": True,
+                    **(
+                        {
+                            "valueGetter": JsCode(
+                                f"""
+                                function(params) {{
+                                    if (params.node && params.node.group) {{
+                                        const num = params.node.aggData ? params.node.aggData["{month}|总降本金额（负）"] : null;
+                                        const den = params.node.aggData ? params.node.aggData["{month}|总入库金额"] : null;
+                                        return den ? num / den : null;
+                                    }}
+                                    return params.data ? params.data["{month}|降本百分比"] : null;
+                                }}
+                                """
+                            )
+                        }
+                        if metric == "降本百分比"
+                        else {}
+                    ),
                     **metric_defs[metric],
                 }
             )
@@ -348,7 +384,7 @@ def render_supplier_material_matrix(
     metric_defs = {
         "总降本金额（负）": {"minWidth": 145, "valueFormatter": money_formatter, "aggFunc": "sum"},
         "总入库金额": {"minWidth": 145, "valueFormatter": money_formatter, "aggFunc": "sum"},
-        "降本百分比": {"minWidth": 135, "valueFormatter": percent_formatter, "aggFunc": "avg"},
+        "降本百分比": {"minWidth": 135, "valueFormatter": percent_formatter},
         "加权平均入库价格": {"minWidth": 155, "valueFormatter": money_formatter, "aggFunc": "avg"},
     }
 
@@ -373,6 +409,24 @@ def render_supplier_material_matrix(
                     "field": f"总计|{metric}",
                     "type": ["numericColumn"],
                     "enableValue": True,
+                    **(
+                        {
+                            "valueGetter": JsCode(
+                                """
+                                function(params) {
+                                    if (params.node && params.node.group) {
+                                        const num = params.node.aggData ? params.node.aggData["总计|总降本金额（负）"] : null;
+                                        const den = params.node.aggData ? params.node.aggData["总计|总入库金额"] : null;
+                                        return den ? num / den : null;
+                                    }
+                                    return params.data ? params.data["总计|降本百分比"] : null;
+                                }
+                                """
+                            )
+                        }
+                        if metric == "降本百分比"
+                        else {}
+                    ),
                     **metric_defs[metric],
                 }
                 for metric in MATRIX_METRICS
@@ -391,6 +445,24 @@ def render_supplier_material_matrix(
                         "field": f"{month}|{metric}",
                         "type": ["numericColumn"],
                         "enableValue": True,
+                        **(
+                            {
+                                "valueGetter": JsCode(
+                                    f"""
+                                    function(params) {{
+                                        if (params.node && params.node.group) {{
+                                            const num = params.node.aggData ? params.node.aggData["{month}|总降本金额（负）"] : null;
+                                            const den = params.node.aggData ? params.node.aggData["{month}|总入库金额"] : null;
+                                            return den ? num / den : null;
+                                        }}
+                                        return params.data ? params.data["{month}|降本百分比"] : null;
+                                    }}
+                                    """
+                                )
+                            }
+                            if metric == "降本百分比"
+                            else {}
+                        ),
                         **metric_defs[metric],
                     }
                     for metric in MATRIX_METRICS
