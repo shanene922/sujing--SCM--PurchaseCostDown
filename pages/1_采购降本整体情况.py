@@ -35,6 +35,7 @@ if bundle.error:
 base_df = bundle.fact_df
 filtered_df = apply_global_filters(base_df, st.session_state.global_filters)
 comparison_df = apply_global_filters(base_df, st.session_state.global_filters, exclude_fields={"Year", "Quarter", "Month"})
+excluded_supplier_name = "深圳市昱显科技有限公司"
 
 
 def _debug_overview_source(df: pd.DataFrame, grain: str) -> pd.DataFrame:
@@ -215,5 +216,51 @@ render_supplier_material_matrix(
 
 st.markdown("<div class='section-title'>联动明细表</div>", unsafe_allow_html=True)
 render_detail_table(page_selection_df, key="page1_detail_table", height=420)
+
+
+def exclude_specific_supplier(df: pd.DataFrame, supplier_name: str) -> pd.DataFrame:
+    if "供应商名称" not in df.columns:
+        return df.copy()
+    names = df["供应商名称"].fillna("").astype(str).str.strip()
+    return df[names != supplier_name].copy()
+
+
+excluded_filtered_df = exclude_specific_supplier(filtered_df, excluded_supplier_name)
+excluded_comparison_df = exclude_specific_supplier(comparison_df, excluded_supplier_name)
+
+st.markdown("<div class='section-title'>排除指定供应商后的 KPI</div>", unsafe_allow_html=True)
+st.caption(f"以下 5 个 KPI 固定排除供应商：{excluded_supplier_name}")
+
+excluded_kpi_cols = st.columns(5)
+with excluded_kpi_cols[0]:
+    render_metric_card(
+        "总入库金额",
+        format_money(total_receipt_amount(excluded_filtered_df)),
+        compute_mom_delta("总入库金额", excluded_filtered_df, excluded_comparison_df),
+    )
+with excluded_kpi_cols[1]:
+    render_metric_card(
+        "降本百分比",
+        format_percent(safe_divide(-excluded_filtered_df["总降本"].sum(), excluded_filtered_df["入库金额"].sum())),
+        compute_mom_delta("降本百分比", excluded_filtered_df, excluded_comparison_df),
+    )
+with excluded_kpi_cols[2]:
+    render_metric_card(
+        "总降本金额（负）",
+        format_money(total_costdown_amount_negative(excluded_filtered_df)),
+        compute_mom_delta("总降本金额（负）", excluded_filtered_df, excluded_comparison_df),
+    )
+with excluded_kpi_cols[3]:
+    render_metric_card(
+        "供应商涨价金额（负）",
+        format_money(-excluded_filtered_df.loc[excluded_filtered_df["降本类别"] == "涨价", "总降本"].sum()),
+        compute_mom_delta("供应商涨价金额", excluded_filtered_df, excluded_comparison_df),
+    )
+with excluded_kpi_cols[4]:
+    render_metric_card(
+        "供应商降价金额（负）",
+        format_money(excluded_filtered_df.loc[excluded_filtered_df["降本类别"] == "降价", "总降本"].sum()),
+        compute_mom_delta("供应商降价金额", excluded_filtered_df, excluded_comparison_df),
+    )
 
 

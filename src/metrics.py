@@ -132,7 +132,16 @@ def material_count(df: pd.DataFrame) -> int:
 
 
 def supplier_count(df: pd.DataFrame) -> int:
-    return int(df["供应商编码"].dropna().nunique()) if "供应商编码" in df.columns else 0
+    if "供应商编码" in df.columns:
+        codes = df["供应商编码"].dropna().astype(str).str.strip()
+        codes = codes[codes.ne("")]
+        if not codes.empty:
+            return int(codes.nunique())
+    if "供应商名称" in df.columns:
+        names = df["供应商名称"].dropna().astype(str).str.strip()
+        names = names[names.ne("")]
+        return int(names.nunique())
+    return 0
 
 
 
