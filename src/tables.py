@@ -24,16 +24,6 @@ DETAIL_COLUMNS = [
 MATRIX_METRICS = ["总降本金额（负）", "总入库金额", "降本百分比", "加权平均入库价格"]
 
 
-def _render_expand_toggle(key: str, label: str = "层级显示") -> int:
-    choice = st.radio(
-        label,
-        options=["默认折叠", "全部展开"],
-        horizontal=True,
-        key=f"{key}_expand_toggle",
-    )
-    return -1 if choice == "全部展开" else 0
-
-
 def _render_csv_download_button(df: pd.DataFrame, key: str, file_name: str) -> None:
     csv_bytes = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
     st.download_button(
@@ -298,7 +288,6 @@ def render_matrix_table(
     matrix_df, month_order = build_matrix_dataframe(df, row_fields, extra_columns=extra_columns)
     export_df = matrix_df.drop(columns=["_path"], errors="ignore")
     _render_csv_download_button(export_df, key=f"{key}_matrix", file_name=f"{key}.csv")
-    expand_level = _render_expand_toggle(key)
 
     builder = GridOptionsBuilder.from_dataframe(matrix_df)
     builder.configure_default_column(sortable=True, filter=True, resizable=True)
@@ -311,7 +300,7 @@ def render_matrix_table(
     grid_options = builder.build()
     grid_options["treeData"] = True
     grid_options["animateRows"] = True
-    grid_options["groupDefaultExpanded"] = expand_level
+    grid_options["groupDefaultExpanded"] = 0
     grid_options["suppressAggFuncInHeader"] = True
     grid_options["getDataPath"] = JsCode("function(data) { return data._path.split(' > '); }")
     grid_options["autoGroupColumnDef"] = {
@@ -373,7 +362,13 @@ def render_supplier_material_matrix(
     matrix_df, month_order = build_matrix_dataframe(df, row_fields, extra_columns=[sourcing_column])
     export_df = matrix_df.drop(columns=["_path"], errors="ignore")
     _render_csv_download_button(export_df, key=f"{key}_matrix", file_name=f"{key}.csv")
-    expand_level = _render_expand_toggle(key)
+    choice = st.radio(
+        "层级显示",
+        options=["默认折叠", "全部展开"],
+        horizontal=True,
+        key=f"{key}_expand_toggle",
+    )
+    expand_level = -1 if choice == "全部展开" else 0
     money_formatter = JsCode(
         """
         function(params) {
@@ -667,7 +662,6 @@ def render_category_overview_table(df: pd.DataFrame, key: str, height: int = 460
 
     export_df = result.drop(columns=["_path"], errors="ignore")
     _render_csv_download_button(export_df, key=f"{key}_csv", file_name=f"{key}.csv")
-    expand_level = _render_expand_toggle(key)
 
     money_formatter = JsCode(
         """
@@ -698,7 +692,7 @@ def render_category_overview_table(df: pd.DataFrame, key: str, height: int = 460
     grid_options = builder.build()
     grid_options["treeData"] = True
     grid_options["animateRows"] = True
-    grid_options["groupDefaultExpanded"] = expand_level
+    grid_options["groupDefaultExpanded"] = 0
     grid_options["suppressAggFuncInHeader"] = True
     grid_options["getDataPath"] = JsCode("function(data) { return data._path.split(' > '); }")
     grid_options["autoGroupColumnDef"] = {
@@ -792,7 +786,6 @@ def render_machine_cost_matrix(df: pd.DataFrame, key: str, height: int = 520) ->
         ]
     ].copy()
     _render_csv_download_button(export_df, key=f"{key}_csv", file_name=f"{key}.csv")
-    expand_level = _render_expand_toggle(key)
 
     money_formatter = JsCode(
         """
@@ -828,7 +821,7 @@ def render_machine_cost_matrix(df: pd.DataFrame, key: str, height: int = 520) ->
     grid_options = builder.build()
     grid_options["treeData"] = True
     grid_options["animateRows"] = True
-    grid_options["groupDefaultExpanded"] = expand_level
+    grid_options["groupDefaultExpanded"] = 0
     grid_options["getDataPath"] = JsCode("function(data) { return data._path.split(' > '); }")
     grid_options["autoGroupColumnDef"] = {
         "headerName": "层级",
