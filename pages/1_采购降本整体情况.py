@@ -130,7 +130,7 @@ def exclude_specific_supplier(df: pd.DataFrame, supplier_name: str) -> pd.DataFr
 excluded_filtered_df = exclude_specific_supplier(filtered_df, excluded_supplier_name)
 excluded_comparison_df = exclude_specific_supplier(comparison_df, excluded_supplier_name)
 
-st.markdown("<div class='section-title'>排除指定供应商后的 KPI</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>排除储存涨价后的降本表现</div>", unsafe_allow_html=True)
 st.caption(f"以下 5 个 KPI 固定排除供应商：{excluded_supplier_name}")
 
 excluded_kpi_cols = st.columns(5)
