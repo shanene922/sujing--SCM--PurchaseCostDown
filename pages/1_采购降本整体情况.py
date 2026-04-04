@@ -114,8 +114,8 @@ with kpi_cols[3]:
     )
 with kpi_cols[4]:
     render_metric_card(
-        "供应商降价金额（负）",
-        format_money(filtered_df.loc[filtered_df["降本类别"] == "降价", "总降本"].sum()),
+        "供应商降价金额",
+        format_money(-filtered_df.loc[filtered_df["降本类别"] == "降价", "总降本"].sum()),
         compute_mom_delta("供应商降价金额", filtered_df, comparison_df),
     )
 
@@ -258,8 +258,8 @@ with excluded_kpi_cols[3]:
     )
 with excluded_kpi_cols[4]:
     render_metric_card(
-        "供应商降价金额（负）",
-        format_money(excluded_filtered_df.loc[excluded_filtered_df["降本类别"] == "降价", "总降本"].sum()),
+        "供应商降价金额",
+        format_money(-excluded_filtered_df.loc[excluded_filtered_df["降本类别"] == "降价", "总降本"].sum()),
         compute_mom_delta("供应商降价金额", excluded_filtered_df, excluded_comparison_df),
     )
 
