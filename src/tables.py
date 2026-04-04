@@ -276,6 +276,29 @@ def _build_pinned_total_row(df: pd.DataFrame, label_field: str, label_text: str 
     return total_row
 
 
+def _build_left_pinned_state(extra_columns: list[str] | None = None) -> str:
+    extra_columns = extra_columns or []
+    ordered_left_cols = [
+        "总计|总降本金额（负）",
+        "总计|总入库金额",
+        "总计|降本百分比",
+        "总计|加权平均入库价格",
+        *extra_columns,
+    ]
+    cols_js = ", ".join([f'"{col}"' for col in ordered_left_cols])
+    return f"""
+        function(params) {{
+            const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left" }}];
+            [{cols_js}].forEach(function(colId) {{
+                if (params.columnApi.getColumn(colId)) {{
+                    state.push({{ colId: colId, pinned: "left" }});
+                }}
+            }});
+            params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
+        }}
+    """
+
+
 
 def render_matrix_table(
     df: pd.DataFrame,
@@ -312,29 +335,7 @@ def render_matrix_table(
         "suppressMovable": True,
     }
     grid_options["columnDefs"] = _build_column_defs(month_order, extra_columns=extra_columns)
-    grid_options["onFirstDataRendered"] = JsCode(
-        """
-        function(params) {
-            const state = [{ colId: "ag-Grid-AutoColumn", pinned: "left" }];
-            ["SOURCING"].forEach(function(colId) {
-                if (params.columnApi.getColumn(colId)) {
-                    state.push({ colId: colId, pinned: "left" });
-                }
-            });
-            [
-                "总计|总降本金额（负）",
-                "总计|总入库金额",
-                "总计|降本百分比",
-                "总计|加权平均入库价格"
-            ].forEach(function(colId) {
-                if (params.columnApi.getColumn(colId)) {
-                    state.push({ colId: colId, pinned: "left" });
-                }
-            });
-            params.columnApi.applyColumnState({ state: state, applyOrder: true });
-        }
-        """
-    )
+    grid_options["onFirstDataRendered"] = JsCode(_build_left_pinned_state(extra_columns=extra_columns))
     total_row = _build_pinned_total_row(matrix_df, label_field="_path", label_text="总计")
     if row_fields:
         total_row[row_fields[0]] = "总计"
@@ -368,7 +369,8 @@ def render_supplier_material_matrix(
         horizontal=True,
         key=f"{key}_expand_toggle",
     )
-    expand_level = -1 if choice == "全部展开" else 0
+    expand_all = choice == "全部展开"
+    expand_level = -1 if expand_all else 0
     money_formatter = JsCode(
         """
         function(params) {
@@ -503,21 +505,12 @@ def render_supplier_material_matrix(
     grid_options["onFirstDataRendered"] = JsCode(
         f"""
         function(params) {{
-            const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left" }}];
-            if (params.columnApi.getColumn("{sourcing_column}")) {{
-                state.push({{ colId: "{sourcing_column}", pinned: "left" }});
+            ({_build_left_pinned_state(extra_columns=[sourcing_column])})(params);
+            if ({str(expand_all).lower()}) {{
+                params.api.expandAll();
+            }} else {{
+                params.api.collapseAll();
             }}
-            [
-                "总计|总降本金额（负）",
-                "总计|总入库金额",
-                "总计|降本百分比",
-                "总计|加权平均入库价格"
-            ].forEach(function(colId) {{
-                if (params.columnApi.getColumn(colId)) {{
-                    state.push({{ colId: colId, pinned: "left" }});
-                }}
-            }});
-            params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
             params.api.refreshHeader();
         }}
         """
@@ -533,8 +526,9 @@ def render_supplier_material_matrix(
         theme="streamlit",
         fit_columns_on_grid_load=False,
         allow_unsafe_jscode=True,
-        key=key,
+        key=f"{key}_{'expanded' if expand_all else 'collapsed'}",
         enable_enterprise_modules=True,
+        reload_data=True,
     )
 
 
