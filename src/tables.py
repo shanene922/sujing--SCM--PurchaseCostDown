@@ -283,16 +283,35 @@ def _build_left_pinned_state(extra_columns: list[str] | None = None) -> str:
     cols_js = ", ".join([f'"{col}"' for col in ordered_left_cols])
     return f"""
         function(params) {{
-            const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left" }}];
+            const columnApi = params.columnApi || params.api;
+            function autoGroupColId() {{
+                const columns = columnApi.getAllGridColumns
+                    ? columnApi.getAllGridColumns()
+                    : (columnApi.getAllColumns ? columnApi.getAllColumns() : []);
+                for (const column of columns) {{
+                    const colId = column.getColId ? column.getColId() : "";
+                    const colDef = column.getColDef ? column.getColDef() : {{}};
+                    if (
+                        colId === "ag-Grid-AutoColumn" ||
+                        colId.indexOf("AutoColumn") >= 0 ||
+                        colDef.showRowGroup ||
+                        colDef.cellRenderer === "agGroupCellRenderer"
+                    ) {{
+                        return colId;
+                    }}
+                }}
+                return "ag-Grid-AutoColumn";
+            }}
+            const state = [{{ colId: autoGroupColId(), pinned: "left", lockPosition: "left" }}];
             [{cols_js}].forEach(function(colId) {{
-                if (params.columnApi.getColumn(colId)) {{
+                if (!columnApi.getColumn || columnApi.getColumn(colId)) {{
                     state.push({{ colId: colId, pinned: "left" }});
                 }}
             }});
-            if (params.columnApi.getColumn("总计|总入库金额")) {{
+            if (!columnApi.getColumn || columnApi.getColumn("总计|总入库金额")) {{
                 state.push({{ colId: "总计|总入库金额", sort: "desc", sortIndex: 0 }});
             }}
-            params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
+            columnApi.applyColumnState({{ state: state, applyOrder: true }});
         }}
     """
 
@@ -526,14 +545,33 @@ def render_supplier_material_matrix(
         f"""
         function(params) {{
             function pinLeftColumns() {{
-                const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left", lockPosition: "left" }}];
-                if (params.columnApi.getColumn("{sourcing_column}")) {{
+                const columnApi = params.columnApi || params.api;
+                function autoGroupColId() {{
+                    const columns = columnApi.getAllGridColumns
+                        ? columnApi.getAllGridColumns()
+                        : (columnApi.getAllColumns ? columnApi.getAllColumns() : []);
+                    for (const column of columns) {{
+                        const colId = column.getColId ? column.getColId() : "";
+                        const colDef = column.getColDef ? column.getColDef() : {{}};
+                        if (
+                            colId === "ag-Grid-AutoColumn" ||
+                            colId.indexOf("AutoColumn") >= 0 ||
+                            colDef.showRowGroup ||
+                            colDef.cellRenderer === "agGroupCellRenderer"
+                        ) {{
+                            return colId;
+                        }}
+                    }}
+                    return "ag-Grid-AutoColumn";
+                }}
+                const state = [{{ colId: autoGroupColId(), pinned: "left", lockPosition: "left" }}];
+                if (!columnApi.getColumn || columnApi.getColumn("{sourcing_column}")) {{
                     state.push({{ colId: "{sourcing_column}", pinned: "left", lockPosition: "left" }});
                 }}
-                if (params.columnApi.getColumn("总计|总入库金额")) {{
+                if (!columnApi.getColumn || columnApi.getColumn("总计|总入库金额")) {{
                     state.push({{ colId: "总计|总入库金额", sort: "desc", sortIndex: 0 }});
                 }}
-                params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
+                columnApi.applyColumnState({{ state: state, applyOrder: true }});
             }}
             pinLeftColumns();
             setTimeout(pinLeftColumns, 0);
