@@ -41,7 +41,7 @@ def render_detail_table(df: pd.DataFrame, key: str, height: int = 360, max_rows:
     if "日期" in table_df.columns:
         table_df["日期"] = pd.to_datetime(table_df["日期"], errors="coerce").dt.strftime("%Y-%m-%d")
     if "行降本百分比" in table_df.columns:
-        table_df["行降本百分比"] = table_df["行降本百分比"].map(lambda x: None if pd.isna(x) else round(x * 100))
+        table_df["行降本百分比"] = table_df["行降本百分比"].map(lambda x: None if pd.isna(x) else round(x * 100, 2))
 
     builder = GridOptionsBuilder.from_dataframe(table_df)
     builder.configure_default_column(groupable=True, sortable=True, filter=True, resizable=True)
@@ -143,7 +143,7 @@ def _build_column_defs(month_order: list[str], extra_columns: list[str] | None =
         """
         function(params) {
             if (params.value === null || params.value === undefined || params.value === '') return '--';
-            return (Number(params.value) * 100).toFixed(0) + '%';
+            return (Number(params.value) * 100).toFixed(2) + '%';
         }
         """
     )
@@ -379,7 +379,7 @@ def render_supplier_material_matrix(
         """
         function(params) {
             if (params.value === null || params.value === undefined || params.value === '') return '--';
-            return (Number(params.value) * 100).toFixed(0) + '%';
+            return (Number(params.value) * 100).toFixed(2) + '%';
         }
         """
     )
@@ -572,7 +572,7 @@ def render_sourcing_month_matrix(df: pd.DataFrame, key: str, height: int = 480) 
         """
         function(params) {
             if (params.value === null || params.value === undefined || params.value === '') return '--';
-            return (Number(params.value) * 100).toFixed(0) + '%';
+            return (Number(params.value) * 100).toFixed(2) + '%';
         }
         """
     )
@@ -643,7 +643,7 @@ def render_category_overview_table(df: pd.DataFrame, key: str, height: int = 460
     result = aggregate_metrics(scoped, ["一级品类", "二级品类"]).rename(columns={"入库金额": "总入库金额"})
     result = result[["一级品类", "二级品类", "总降本金额（负）", "总入库金额", "降本百分比"]].copy()
     for col in ["总降本金额（负）", "总入库金额", "降本百分比"]:
-        result[col] = pd.to_numeric(result[col], errors="coerce").round(0)
+        result[col] = pd.to_numeric(result[col], errors="coerce").round(4 if col == "降本百分比" else 0)
     result = result.sort_values(["总降本金额（负）", "总入库金额"], ascending=[False, False]).reset_index(drop=True)
     result["_path"] = result[["一级品类", "二级品类"]].agg(" > ".join, axis=1)
 
@@ -662,7 +662,7 @@ def render_category_overview_table(df: pd.DataFrame, key: str, height: int = 460
         """
         function(params) {
             if (params.value === null || params.value === undefined || params.value === '') return '--';
-            return (Number(params.value) * 100).toFixed(0) + '%';
+            return (Number(params.value) * 100).toFixed(2) + '%';
         }
         """
     )
@@ -783,7 +783,7 @@ def render_machine_cost_matrix(df: pd.DataFrame, key: str, height: int = 520) ->
         """
         function(params) {
             if (params.value === null || params.value === undefined || params.value === '') return '--';
-            return (Number(params.value) * 100).toFixed(0) + '%';
+            return (Number(params.value) * 100).toFixed(2) + '%';
         }
         """
     )
