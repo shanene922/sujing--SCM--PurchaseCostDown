@@ -387,6 +387,17 @@ def render_supplier_material_matrix(
     }
 
     column_defs: list[dict] = []
+    if sourcing_column in matrix_df.columns:
+        column_defs.append(
+            {
+                "headerName": sourcing_column,
+                "field": sourcing_column,
+                "minWidth": 140,
+                "pinned": "left",
+                "lockPosition": "left",
+                "suppressMovable": True,
+            }
+        )
     column_defs.append(
         {
             "headerName": "总计",
@@ -395,6 +406,9 @@ def render_supplier_material_matrix(
                     "headerName": metric,
                     "field": f"总计|{metric}",
                     "type": ["numericColumn"],
+                    "pinned": "left",
+                    "lockPosition": "left",
+                    "suppressMovable": True,
                     "enableValue": True,
                     **(
                         {
@@ -422,15 +436,6 @@ def render_supplier_material_matrix(
             "headerClass": "ag-center-header",
         }
     )
-    if sourcing_column in matrix_df.columns:
-        column_defs.append(
-            {
-                "headerName": sourcing_column,
-                "field": sourcing_column,
-                "minWidth": 140,
-                "suppressMovable": True,
-            }
-        )
     for month in month_order:
         column_defs.append(
             {
@@ -492,7 +497,21 @@ def render_supplier_material_matrix(
     grid_options["onFirstDataRendered"] = JsCode(
         f"""
         function(params) {{
-            ({_build_left_pinned_state(extra_columns=[sourcing_column])})(params);
+            const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left" }}];
+            if (params.columnApi.getColumn("{sourcing_column}")) {{
+                state.push({{ colId: "{sourcing_column}", pinned: "left" }});
+            }}
+            [
+                "总计|总降本金额（负）",
+                "总计|总入库金额",
+                "总计|降本百分比",
+                "总计|加权平均入库价格"
+            ].forEach(function(colId) {{
+                if (params.columnApi.getColumn(colId)) {{
+                    state.push({{ colId: colId, pinned: "left" }});
+                }}
+            }});
+            params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
             if ({str(expand_all).lower()}) {{
                 params.api.expandAll();
             }} else {{
