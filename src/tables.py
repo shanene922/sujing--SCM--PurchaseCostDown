@@ -167,9 +167,6 @@ def _build_column_defs(month_order: list[str], extra_columns: list[str] | None =
                     "headerName": metric,
                     "field": f"总计|{metric}",
                     "type": ["numericColumn"],
-                    "pinned": "left",
-                    "lockPosition": "left",
-                    "suppressMovable": True,
                     "enableValue": True,
                     **({"sort": "desc", "sortIndex": 0} if metric == "总入库金额" else {}),
                     **(
@@ -305,7 +302,7 @@ def _build_left_pinned_state(extra_columns: list[str] | None = None) -> str:
             const state = [{{ colId: autoGroupColId(), pinned: "left", lockPosition: "left" }}];
             [{cols_js}].forEach(function(colId) {{
                 if (!columnApi.getColumn || columnApi.getColumn(colId)) {{
-                    state.push({{ colId: colId, pinned: "left" }});
+                    state.push({{ colId: colId, pinned: "left", lockPosition: "left" }});
                 }}
             }});
             if (!columnApi.getColumn || columnApi.getColumn("总计|总入库金额")) {{
@@ -366,7 +363,11 @@ def render_matrix_table(
     grid_options["onFirstDataRendered"] = JsCode(
         f"""
         function(params) {{
-            ({_build_left_pinned_state(extra_columns=extra_columns)})(params);
+            function applyPinnedState() {{
+                ({_build_left_pinned_state(extra_columns=extra_columns)})(params);
+            }}
+            applyPinnedState();
+            setTimeout(applyPinnedState, 0);
             if ({str(expand_all).lower()}) {{
                 params.api.expandAll();
             }} else {{
