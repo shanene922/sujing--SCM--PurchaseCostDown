@@ -7,7 +7,7 @@ from src.data_loader import get_clean_data_bundle
 from src.filters import apply_chart_selections, apply_global_filters, render_global_sidebar
 from src.state import get_page_chart_selections
 from src.styles import apply_global_styles
-from src.tables import render_matrix_table, render_sourcing_month_matrix
+from src.tables import render_sourcing_month_matrix
 from src.utils import setup_page
 
 
@@ -39,9 +39,6 @@ scoped_df["物料编码名称"] = (
     + scoped_df["物料名称"].fillna("").astype(str).str.strip()
 )
 
-st.markdown("<div class='section-title'>矩阵 1</div>", unsafe_allow_html=True)
-render_matrix_table(scoped_df, key="page2_matrix_1", row_fields=["供应商名称", "物料编码名称"], grain="月份", height=460)
-
-st.markdown("<div class='section-title'>矩阵 2</div>", unsafe_allow_html=True)
+st.markdown("<div class='section-title'>各个寻源采购降本情况</div>", unsafe_allow_html=True)
 st.caption("矩阵2：行=月份，列=SOURCING（每个 SOURCING 下显示四个指标）。")
 render_sourcing_month_matrix(scoped_df, key="page2_matrix_2", height=460)

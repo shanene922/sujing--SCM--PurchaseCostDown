@@ -126,6 +126,8 @@ def build_matrix_dataframe(df: pd.DataFrame, row_fields: list[str], extra_column
     metric_cols = [c for c in result.columns if "|" in c]
     for col in metric_cols:
         result[col] = pd.to_numeric(result[col], errors="coerce").round(0)
+    if "总计|总入库金额" in result.columns:
+        result = result.sort_values("总计|总入库金额", ascending=False, kind="mergesort").reset_index(drop=True)
     return result, month_order
 
 
@@ -169,6 +171,7 @@ def _build_column_defs(month_order: list[str], extra_columns: list[str] | None =
                     "lockPosition": "left",
                     "suppressMovable": True,
                     "enableValue": True,
+                    **({"sort": "desc", "sortIndex": 0} if metric == "总入库金额" else {}),
                     **(
                         {
                             "valueGetter": JsCode(
@@ -286,6 +289,9 @@ def _build_left_pinned_state(extra_columns: list[str] | None = None) -> str:
                     state.push({{ colId: colId, pinned: "left" }});
                 }}
             }});
+            if (params.columnApi.getColumn("总计|总入库金额")) {{
+                state.push({{ colId: "总计|总入库金额", sort: "desc", sortIndex: 0 }});
+            }}
             params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
         }}
     """
@@ -299,10 +305,21 @@ def render_matrix_table(
     grain: str = "月份",
     height: int = 480,
     extra_columns: list[str] | None = None,
+    show_expand_toggle: bool = False,
 ) -> None:
     matrix_df, month_order = build_matrix_dataframe(df, row_fields, extra_columns=extra_columns)
     export_df = matrix_df.drop(columns=["_path"], errors="ignore")
     _render_csv_download_button(export_df, key=f"{key}_matrix", file_name=f"{key}.csv")
+    expand_all = False
+    if show_expand_toggle:
+        choice = st.radio(
+            "层级显示",
+            options=["默认折叠", "全部展开"],
+            horizontal=True,
+            key=f"{key}_expand_toggle",
+        )
+        expand_all = choice == "全部展开"
+    expand_level = -1 if expand_all else 0
 
     builder = GridOptionsBuilder.from_dataframe(matrix_df)
     builder.configure_default_column(sortable=True, filter=True, resizable=True)
@@ -315,7 +332,7 @@ def render_matrix_table(
     grid_options = builder.build()
     grid_options["treeData"] = True
     grid_options["animateRows"] = True
-    grid_options["groupDefaultExpanded"] = 0
+    grid_options["groupDefaultExpanded"] = expand_level
     grid_options["suppressAggFuncInHeader"] = True
     grid_options["getDataPath"] = JsCode("function(data) { return data._path.split(' > '); }")
     grid_options["autoGroupColumnDef"] = {
@@ -327,7 +344,19 @@ def render_matrix_table(
         "suppressMovable": True,
     }
     grid_options["columnDefs"] = _build_column_defs(month_order, extra_columns=extra_columns)
-    grid_options["onFirstDataRendered"] = JsCode(_build_left_pinned_state(extra_columns=extra_columns))
+    grid_options["onFirstDataRendered"] = JsCode(
+        f"""
+        function(params) {{
+            ({_build_left_pinned_state(extra_columns=extra_columns)})(params);
+            if ({str(expand_all).lower()}) {{
+                params.api.expandAll();
+            }} else {{
+                params.api.collapseAll();
+            }}
+        }}
+        """
+    )
+    grid_options["onGridReady"] = grid_options["onFirstDataRendered"]
     total_row = _build_pinned_total_row(matrix_df, label_field="_path", label_text="总计")
     if row_fields:
         total_row[row_fields[0]] = "总计"
@@ -340,8 +369,9 @@ def render_matrix_table(
         theme="streamlit",
         fit_columns_on_grid_load=False,
         allow_unsafe_jscode=True,
-        key=key,
+        key=f"{key}_{'expanded' if expand_all else 'collapsed'}" if show_expand_toggle else key,
         enable_enterprise_modules=True,
+        reload_data=show_expand_toggle,
     )
 
 
@@ -406,10 +436,8 @@ def render_supplier_material_matrix(
                     "headerName": metric,
                     "field": f"总计|{metric}",
                     "type": ["numericColumn"],
-                    "pinned": "left",
-                    "lockPosition": "left",
-                    "suppressMovable": True,
                     "enableValue": True,
+                    **({"sort": "desc", "sortIndex": 0} if metric == "总入库金额" else {}),
                     **(
                         {
                             "valueGetter": JsCode(
@@ -497,21 +525,18 @@ def render_supplier_material_matrix(
     grid_options["onFirstDataRendered"] = JsCode(
         f"""
         function(params) {{
-            const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left" }}];
-            if (params.columnApi.getColumn("{sourcing_column}")) {{
-                state.push({{ colId: "{sourcing_column}", pinned: "left" }});
-            }}
-            [
-                "总计|总降本金额（负）",
-                "总计|总入库金额",
-                "总计|降本百分比",
-                "总计|加权平均入库价格"
-            ].forEach(function(colId) {{
-                if (params.columnApi.getColumn(colId)) {{
-                    state.push({{ colId: colId, pinned: "left" }});
+            function pinLeftColumns() {{
+                const state = [{{ colId: "ag-Grid-AutoColumn", pinned: "left", lockPosition: "left" }}];
+                if (params.columnApi.getColumn("{sourcing_column}")) {{
+                    state.push({{ colId: "{sourcing_column}", pinned: "left", lockPosition: "left" }});
                 }}
-            }});
-            params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
+                if (params.columnApi.getColumn("总计|总入库金额")) {{
+                    state.push({{ colId: "总计|总入库金额", sort: "desc", sortIndex: 0 }});
+                }}
+                params.columnApi.applyColumnState({{ state: state, applyOrder: true }});
+            }}
+            pinLeftColumns();
+            setTimeout(pinLeftColumns, 0);
             if ({str(expand_all).lower()}) {{
                 params.api.expandAll();
             }} else {{
@@ -521,6 +546,7 @@ def render_supplier_material_matrix(
         }}
         """
     )
+    grid_options["onGridReady"] = grid_options["onFirstDataRendered"]
     total_row = _build_pinned_total_row(matrix_df, label_field="_path", label_text="总计")
     total_row["供应商名称"] = "总计"
     grid_options["pinnedBottomRowData"] = [total_row]
@@ -604,13 +630,7 @@ def render_sourcing_month_matrix(df: pd.DataFrame, key: str, height: int = 480) 
         return col_def
 
     col_defs = [
-        {"headerName": "月份", "field": "月份", "pinned": "left", "minWidth": 110},
-        {
-            "headerName": "总计",
-            "children": [metric_col(m, f"总计|{m}", pinned_left=True) for m in MATRIX_METRICS],
-            "marryChildren": True,
-            "headerClass": "ag-center-header",
-        },
+        {"headerName": "月份", "field": "月份", "pinned": "left", "lockPosition": "left", "suppressMovable": True, "minWidth": 110},
     ]
     for source in sourcing_order:
         col_defs.append(
@@ -621,6 +641,14 @@ def render_sourcing_month_matrix(df: pd.DataFrame, key: str, height: int = 480) 
                 "headerClass": "ag-center-header",
             }
         )
+    col_defs.append(
+        {
+            "headerName": "总计",
+            "children": [metric_col(m, f"总计|{m}") for m in MATRIX_METRICS],
+            "marryChildren": True,
+            "headerClass": "ag-center-header",
+        }
+    )
 
     grid_options = {
         "columnDefs": col_defs,
