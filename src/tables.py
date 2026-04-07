@@ -205,8 +205,6 @@ def _build_column_defs(month_order: list[str], extra_columns: list[str] | None =
                 "headerName": col,
                 "field": col,
                 "minWidth": 130,
-                "pinned": "left",
-                "lockPosition": "left",
                 "suppressMovable": True,
             }
         )
@@ -273,13 +271,11 @@ def _build_pinned_total_row(df: pd.DataFrame, label_field: str, label_text: str 
 
 
 def _build_left_pinned_state(extra_columns: list[str] | None = None) -> str:
-    extra_columns = extra_columns or []
     ordered_left_cols = [
         "总计|总降本金额（负）",
         "总计|总入库金额",
         "总计|降本百分比",
         "总计|加权平均入库价格",
-        *extra_columns,
     ]
     cols_js = ", ".join([f'"{col}"' for col in ordered_left_cols])
     return f"""
@@ -432,8 +428,6 @@ def render_supplier_material_matrix(
                 "headerName": sourcing_column,
                 "field": sourcing_column,
                 "minWidth": 140,
-                "pinned": "left",
-                "lockPosition": "left",
                 "suppressMovable": True,
             }
         )
