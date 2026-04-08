@@ -22,6 +22,7 @@ DETAIL_COLUMNS = [
 ]
 
 MATRIX_METRICS = ["总降本金额（负）", "总入库金额", "降本百分比", "加权平均入库价格"]
+MATRIX_RATIO_METRICS = {"降本百分比"}
 
 
 def _render_csv_download_button(df: pd.DataFrame, key: str, file_name: str) -> None:
@@ -84,6 +85,16 @@ def _collapse_dimension_values(series: pd.Series) -> str:
     return " / ".join(unique_values)
 
 
+def _round_matrix_metric_columns(df: pd.DataFrame) -> pd.DataFrame:
+    rounded = df.copy()
+    metric_cols = [c for c in rounded.columns if "|" in c]
+    for col in metric_cols:
+        metric_name = col.split("|", 1)[1]
+        precision = 6 if metric_name in MATRIX_RATIO_METRICS else 0
+        rounded[col] = pd.to_numeric(rounded[col], errors="coerce").round(precision)
+    return rounded
+
+
 def build_matrix_dataframe(df: pd.DataFrame, row_fields: list[str], extra_columns: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
     if df.empty:
         return pd.DataFrame(columns=row_fields + ["_path"]), []
@@ -122,10 +133,7 @@ def build_matrix_dataframe(df: pd.DataFrame, row_fields: list[str], extra_column
         result = result.merge(month_slice, on=row_fields, how="left")
 
     result["_path"] = result[row_fields].fillna("(空值)").astype(str).agg(" > ".join, axis=1)
-    # Force matrix metric values to integers before rendering.
-    metric_cols = [c for c in result.columns if "|" in c]
-    for col in metric_cols:
-        result[col] = pd.to_numeric(result[col], errors="coerce").round(0)
+    result = _round_matrix_metric_columns(result)
     if "总计|总入库金额" in result.columns:
         result = result.sort_values("总计|总入库金额", ascending=False, kind="mergesort").reset_index(drop=True)
     return result, month_order
@@ -634,9 +642,7 @@ def render_sourcing_month_matrix(df: pd.DataFrame, key: str, height: int = 480) 
         for metric in MATRIX_METRICS:
             result[f"{source}|{metric}"] = result["月份"].map(source_map[metric] if metric in source_map.columns else pd.Series(dtype="float64"))
 
-    value_cols = [c for c in result.columns if "|" in c]
-    for col in value_cols:
-        result[col] = pd.to_numeric(result[col], errors="coerce").round(0)
+    result = _round_matrix_metric_columns(result)
 
     money_formatter = JsCode(
         """
